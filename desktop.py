@@ -241,8 +241,8 @@ class ImageScannerApp(tk.Frame):
     def __init__(self, master, main, list_name="NewScript"):
         super().__init__(master)
         self.scan_thread = None
-        self.master = master
-        self.main = main
+        self.master = master # 本页面（notebook）的设置
+        self.main = main  # 主页面的设置
 
         # 参数的初始化
         self.file_path = None
@@ -252,16 +252,18 @@ class ImageScannerApp(tk.Frame):
         self.operation_settings_window.set_list_name(self.operation_filename)
         self.operation_settings_window.destroy_self()
 
-        self.master.lift()
-        self.master.focus_force()
+        self.bx = None  # 用于第二次减少时间的二次数据保存位置
+        self.by = None
+        self.ex = None
+        self.ey = None
 
-        self.scanning = False
+        self.scanning = False   # 是否扫描
 
-        self.manual_selection_coordinates = None
+        self.manual_selection_coordinates = None   # 框选的扫描
 
-        self.manual_select_mode = False
+        self.manual_select_mode = False   # 是否是第一次匹配
 
-        self.list_name = list_name
+        self.list_name = list_name   # 读取文件名称，list_name是默认的名字···
         self.file_name = f"{list_name}.data"
 
         # 左侧的部分界面
@@ -409,10 +411,7 @@ class ImageScannerApp(tk.Frame):
         self.operation_settings_window.set_list_name(self.operation_filename)
 
     def take_screenshot(self):
-        active_window = gw.getWindowsWithTitle(gw.getActiveWindow().title)
-        left, top, width, height = active_window[0].left, active_window[0].top, active_window[0].width, active_window[
-            0].height
-        screenshot = ImageGrab.grab(bbox=(left, top, left + width, top + height))  # 使用ImageGrab进行截图
+        screenshot = ImageGrab.grab()
         return screenshot
 
     def load_target_image(self, path):
@@ -523,51 +522,36 @@ class ImageScannerApp(tk.Frame):
                             result = self.compare_images(screen_region, self.target_image)
                             if result:
                                 match_found = True
+                                print(region)
+                                self.bx = x1
+                                self.by = y1
+                                self.ex = x1 + self.target_image.shape[1]
+                                self.ey = y1 + self.target_image.shape[0]
 
+                                self.manual_select_mode = True
                                 self.operation_settings_window.execute_operations()
-
                                 self.scanning_status_label.config(
                                     text=f"匹配成功：({x}, {y}) to ({x + self.target_image.shape[1]}, {y + self.target_image.shape[0]})")
                                 break
-
-                    # region = (x1, y1, x2, y2)
-                    # screen_region = np.array(screenshot.crop(region))
-                    # result = self.compare_images(screen_region, self.target_image)
-                    # if result:
-                    #     match_found = True
-                    #     self.operation_settings_window.execute_operations()
-                    #     self.scanning_status_label.config(text=f"匹配成功：({x1}, {y1}) to ({x2}, {y2})")
-
                     if not match_found:
                         self.scanning_status_label.config(text="没有符合的区域")
                     screenshot.close()
-
+            else:
+                screenshot = self.take_screenshot()
+                # region = (self.bx, self.by, self.ex, self.ey)
+                region = (1627, 74, 1702, 121)
+                print("第二次进入")
+                print(region)
+                screen_region = np.array(screenshot.crop(region))
+                result = self.compare_images(screen_region, self.target_image)
+                if result:
+                    print(region)
+                    self.operation_settings_window.execute_operations()
+                    self.scanning_status_label.config(text=f"二次匹配成功!")
                 else:
-                    # 执行现有的自动扫描逻辑
-                    screenshot = self.take_screenshot()
-                    match_found = False
-                    search_width = 80
-                    search_height = 175
-                    for y in range(search_height):
-                        for x in range(search_width):
-                            region = (x, y, x + self.target_image.shape[1], y + self.target_image.shape[0])
-                            if region[0] + self.target_image.shape[1] > search_width or region[1] + \
-                                    self.target_image.shape[0] > search_height:
-                                break
-                            screen_region = np.array(screenshot.crop(region))
-                            result = self.compare_images(screen_region, self.target_image)
-                            if result:
-                                match_found = True
-
-                                self.operation_settings_window.execute_operations()
-
-                                self.scanning_status_label.config(
-                                    text=f"匹配成功：({x}, {y}) to ({x + self.target_image.shape[1]}, {y + self.target_image.shape[0]})")
-                                break
-                    if not match_found:
-                        self.scanning_status_label.config(text="没有符合的区域")
-                    screenshot.close()
-
+                    self.scanning_status_label.config(text="没有符合的区域")
+                    time.sleep(1)
+                screenshot.close()
             self.master.after(100, self.scan_loop)
 
 
@@ -576,6 +560,8 @@ class MainDesk(tk.Tk):
         super().__init__()
         self.geometry("600x500")
         self.title("Script_Runner")
+        self.lift()
+        self.focus_set()
 
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(fill="both", expand=True)

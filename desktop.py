@@ -1,7 +1,7 @@
 import os
 import time
 import tkinter as tk
-from tkinter import filedialog
+from tkinter import filedialog, ttk
 import cv2
 import numpy as np
 import pyautogui
@@ -10,6 +10,7 @@ from PIL import Image, ImageGrab, ImageTk
 import imagehash
 import pickle
 import keyboard
+
 
 class OperationList:
     def __init__(self, root, list_name="NewOperation"):
@@ -235,8 +236,12 @@ class OperationList:
             self.operation_listbox.insert(tk.END, operation)
 
 
-class ImageScannerApp:
-    def __init__(self, root, list_name="NewScript"):
+class ImageScannerApp(tk.Frame):
+    def __init__(self, master, main, list_name="NewScript"):
+        super().__init__(master)
+        self.master = master
+        self.main = main
+        # 参数的初始化
         self.file_path = None
         self.operation_filename = "NewOperation"
 
@@ -244,36 +249,8 @@ class ImageScannerApp:
         self.operation_settings_window.set_list_name(self.operation_filename)
         self.operation_settings_window.destroy_self()
 
-        self.root = root
-        self.root.title("游戏脚本编辑器")
-        self.root.lift()
-        self.root.focus_force()
-        keyboard.on_press_key("esc", self.handle_escape_key)
-
-        self.scanning_status_label = tk.Label(self.root, text="正在扫描：无", fg="red")
-        self.scanning_status_label.pack(side="left", padx=10)
-
-        self.start_button = tk.Button(self.root, text="开始扫描", command=self.start_scanning)
-        self.start_button.pack(pady=10)
-
-        self.stop_button = tk.Button(self.root, text="停止扫描", command=self.stop_scanning)
-        self.stop_button.pack(pady=10)
-
-        self.target_image_path_label = tk.Label(self.root, text="目标图片路径:")
-        self.target_image_path_label.pack()
-
-        self.target_image_path = tk.Entry(self.root)
-        self.target_image_path.pack()
-
-        self.browse_button = tk.Button(self.root, text="浏览图片", command=self.browse_target_image)
-        self.browse_button.pack(pady=5)
-
-        self.manual_select_button = tk.Button(self.root, text="手动框选", command=self.open_manual_selection_window)
-        self.manual_select_button.pack(pady=5)
-
-        self.operation_settings_button = tk.Button(self.root, text="设置操作",
-                                                   command=self.open_operation_settings_window)
-        self.operation_settings_button.pack(pady=10)
+        self.master.lift()
+        self.master.focus_force()
 
         self.scanning = False
 
@@ -281,27 +258,61 @@ class ImageScannerApp:
 
         self.manual_select_mode = False
 
-        self.menu_bar = tk.Menu(self.root)
-
-        self.file_menu = tk.Menu(self.menu_bar, tearoff=0)
-        self.file_menu.add_command(label="保存脚本", command=self.save_script)
-        self.file_menu.add_command(label="读取脚本", command=self.load_script)
-
-        self.menu_bar.add_cascade(label="脚本", menu=self.file_menu)
-
-        self.root.config(menu=self.menu_bar)
-
         self.list_name = list_name
         self.file_name = f"{list_name}.data"
 
-        self.operation_name_label = tk.Label(self.root, text="操作列表名:")
+        # 左侧的部分界面
+        left_frame = tk.Frame(self.master)
+        left_frame.pack(side="left", padx=10)
+
+        self.scanning_status_label = tk.Label(left_frame, text="正在扫描：无", fg="red")
+        self.scanning_status_label.pack()
+
+        # 中间的部分界面
+        middle_frame = tk.Frame(self.master)
+        middle_frame.pack(side="left", padx=10)
+
+        self.start_button = tk.Button(middle_frame, text="开始扫描", command=self.start_scanning)
+        self.start_button.pack(pady=10)
+
+        self.stop_button = tk.Button(middle_frame, text="停止扫描", command=self.stop_scanning)
+        self.stop_button.pack(pady=10)
+
+        self.target_image_path_label = tk.Label(middle_frame, text="目标图片路径:")
+        self.target_image_path_label.pack()
+
+        self.target_image_path = tk.Entry(middle_frame)
+        self.target_image_path.pack()
+
+        self.browse_button = tk.Button(middle_frame, text="浏览图片", command=self.browse_target_image)
+        self.browse_button.pack(pady=5)
+
+        self.manual_select_button = tk.Button(middle_frame, text="手动框选", command=self.open_manual_selection_window)
+        self.manual_select_button.pack(pady=5)
+
+        self.operation_settings_button = tk.Button(middle_frame, text="设置操作",
+                                                   command=self.open_operation_settings_window)
+        self.operation_settings_button.pack(pady=10)
+
+        # 右边的部分界面
+        right_frame = tk.Frame(self.master)
+        right_frame.pack(side="left", padx=10)
+
+        self.save_button = tk.Button(right_frame, text="保存脚本", command=self.save_script)
+        self.save_button.pack(pady=10)
+
+        self.load_button = tk.Button(right_frame, text="读取脚本", command=self.load_script)
+        self.load_button.pack(pady=10)
+
+        self.operation_name_label = tk.Label(right_frame, text="操作列表名:")
         self.operation_name_label.pack()
 
-        self.operation_name_entry = tk.Entry(self.root)
+        self.operation_name_entry = tk.Entry(right_frame)
         self.operation_name_entry.pack()
 
-        self.browse_operation_button = tk.Button(self.root, text="浏览文件", command=self.browse_operation_file)
+        self.browse_operation_button = tk.Button(right_frame, text="浏览文件", command=self.browse_operation_file)
         self.browse_operation_button.pack(pady=5)
+        keyboard.on_press_key("esc", self.stop_key)
 
         try:
             self.scripts = self.load_ordinary() if self.load_ordinary() else []
@@ -309,14 +320,9 @@ class ImageScannerApp:
         except FileNotFoundError:
             pass
 
-    def handle_escape_key(self, event):
+    def stop_key(self, event):
         if self.scanning:
             self.stop_scanning()
-        window = gw.getWindowsWithTitle("游戏脚本编辑器")[0]  # 替换成你的窗口标题
-        window.maximize()
-        window.size = (600, 500)
-        window.moveTo(660, 290)
-        window.activate()
 
     def browse_operation_file(self):
         filename = filedialog.askopenfilename(initialdir="C:/Users/hp/PycharmProjects/ScriptsRunner/",
@@ -394,7 +400,7 @@ class ImageScannerApp:
                 self.operation_name_entry.insert(0, filename)
 
     def open_operation_settings_window(self):
-        self.operation_settings_window = OperationList(self.root)
+        self.operation_settings_window = OperationList(self.master)
         self.operation_settings_window.set_list_name(self.operation_filename)
 
     def take_screenshot(self):
@@ -436,7 +442,7 @@ class ImageScannerApp:
         self.scanning = True
         self.target_image_path_str = self.target_image_path.get()
         self.target_image = self.load_target_image(self.target_image_path_str)
-        self.root.iconify()  # 将窗口最小化
+        self.main.iconify()  # 将窗口最小化
         self.scan_loop()
 
     def stop_scanning(self):
@@ -453,18 +459,19 @@ class ImageScannerApp:
         self.target_image_path.insert(0, self.target_image_path_str)
 
     def open_manual_selection_window(self):
-        self.root.iconify()  # 将主窗口最小化
-        self.manual_selection_window = tk.Toplevel(self.root)  # 创建一个新的Toplevel窗口
+        self.main.iconify()  # 将主窗口最小化
+        self.manual_selection_window = tk.Toplevel(self.master)  # 创建一个新的Toplevel窗口
         self.manual_selection_window.overrideredirect(True)  # 去除窗口边框
         self.manual_selection_window.attributes("-alpha", 0.1)  # 设置窗口透明度
         self.manual_selection_window.attributes("-topmost", True)  # 窗口置顶
         self.manual_selection_window.geometry(
-            f"{self.root.winfo_screenwidth()}x{self.root.winfo_screenheight()}+0+0")  # 设置窗口大小和位置
-        self.manual_selection_image = Image.new("RGBA", (self.root.winfo_screenwidth(), self.root.winfo_screenheight()),
+            f"{self.master.winfo_screenwidth()}x{self.master.winfo_screenheight()}+0+0")  # 设置窗口大小和位置
+        self.manual_selection_image = Image.new("RGBA",
+                                                (self.master.winfo_screenwidth(), self.master.winfo_screenheight()),
                                                 (0, 0, 0, 0))  # 创建透明图像
         self.manual_selection_photo = ImageTk.PhotoImage(self.manual_selection_image)
-        self.manual_selection_canvas = tk.Canvas(self.manual_selection_window, width=self.root.winfo_screenwidth(),
-                                                 height=self.root.winfo_screenheight(), highlightthickness=0)
+        self.manual_selection_canvas = tk.Canvas(self.manual_selection_window, width=self.master.winfo_screenwidth(),
+                                                 height=self.master.winfo_screenheight(), highlightthickness=0)
         self.manual_selection_canvas.create_image(0, 0, anchor="nw", image=self.manual_selection_photo)
         self.manual_selection_canvas.pack()
         self.manual_selection_window.bind('<ButtonRelease-1>',
@@ -479,18 +486,18 @@ class ImageScannerApp:
     def on_release_select(self, event):
         self.end_x = event.x  # 记录鼠标释放时的横坐标
         self.end_y = event.y  # 记录鼠标释放时的纵坐标
-        self.root.attributes("-alpha", 1.0)  # 恢复窗口透明度
-        self.root.state('normal')  # 恢复窗口大小
+        self.master.attributes("-alpha", 1.0)  # 恢复窗口透明度
+        self.main.state('normal')  # 恢复窗口大小
         self.manual_select_mode = False  # 退出手动框选模式
         self.scanning_status_label.config(
             text=f"正在扫描：({self.start_x}, {self.start_y}) 到 ({self.end_x}, {self.end_y})")
-        self.root.unbind('<Motion>')  # 解绑鼠标移动事件
-        self.root.unbind('<ButtonPress-1>')  # 解绑鼠标左键按下事件
-        self.root.unbind('<ButtonRelease-1>')  # 解绑鼠标左键释放事件
+        self.master.unbind('<Motion>')  # 解绑鼠标移动事件
+        self.master.unbind('<ButtonPress-1>')  # 解绑鼠标左键按下事件
+        self.master.unbind('<ButtonRelease-1>')  # 解绑鼠标左键释放事件
         self.start_button.config(state="normal")  # 恢复“开始扫描”按钮的状态
         self.manual_selection_coordinates = (
             self.start_x, self.start_y, self.end_x, self.end_y)  # Store the coordinates
-        self.root.deiconify()
+        self.main.deiconify()
         self.manual_selection_window.destroy()
 
     def scan_loop(self):
@@ -545,11 +552,37 @@ class ImageScannerApp:
                         self.scanning_status_label.config(text="没有符合的区域")
                     screenshot.close()
 
-            self.root.after(100, self.scan_loop)
+            self.master.after(100, self.scan_loop)
+
+
+class MainDesk(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.geometry("600x500")
+        self.title("Script_Runner")
+
+        self.notebook = ttk.Notebook(self)
+        self.notebook.pack(fill="both", expand=True)
+
+        self.create_add_button()
+        self.sub_windows = []
+
+    def create_add_button(self):
+        add_button = tk.Button(self, text="Add ImageScannerApp", command=self.add_image_scanner_app)
+        add_button.pack(pady=10)
+
+    def add_image_scanner_app(self):
+        sub_window = ImageScannerApp(self.notebook, self)
+        self.sub_windows.append(sub_window)
+
+        tab_name = f"Tab {len(self.sub_windows)}"
+        self.notebook.add(sub_window, text=tab_name)
+        self.notebook.select(sub_window)
+
+    def minimize_main_window(self):
+        self.iconify()
 
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    root.geometry("600x500")  # 设置窗口初始大小
-    app = ImageScannerApp(root)
+    root = MainDesk()
     root.mainloop()

@@ -9,7 +9,7 @@ import pygetwindow as gw
 from PIL import Image, ImageGrab, ImageTk
 import imagehash
 import pickle
-
+import keyboard
 
 class OperationList:
     def __init__(self, root, list_name="NewOperation"):
@@ -248,6 +248,7 @@ class ImageScannerApp:
         self.root.title("游戏脚本编辑器")
         self.root.lift()
         self.root.focus_force()
+        keyboard.on_press_key("esc", self.handle_escape_key)
 
         self.scanning_status_label = tk.Label(self.root, text="正在扫描：无", fg="red")
         self.scanning_status_label.pack(side="left", padx=10)
@@ -307,6 +308,15 @@ class ImageScannerApp:
             self.load_all_script()
         except FileNotFoundError:
             pass
+
+    def handle_escape_key(self, event):
+        if self.scanning:
+            self.stop_scanning()
+        window = gw.getWindowsWithTitle("游戏脚本编辑器")[0]  # 替换成你的窗口标题
+        window.maximize()
+        window.size = (600, 500)
+        window.moveTo(660, 290)
+        window.activate()
 
     def browse_operation_file(self):
         filename = filedialog.askopenfilename(initialdir="C:/Users/hp/PycharmProjects/ScriptsRunner/",

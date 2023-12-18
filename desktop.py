@@ -1,4 +1,5 @@
 import os
+import threading
 import time
 import tkinter as tk
 from tkinter import filedialog, ttk
@@ -239,8 +240,10 @@ class OperationList:
 class ImageScannerApp(tk.Frame):
     def __init__(self, master, main, list_name="NewScript"):
         super().__init__(master)
+        self.scan_thread = None
         self.master = master
         self.main = main
+
         # 参数的初始化
         self.file_path = None
         self.operation_filename = "NewOperation"
@@ -361,31 +364,33 @@ class ImageScannerApp(tk.Frame):
         file_path = filedialog.askopenfilename(initialdir="C:/Users/hp/PycharmProjects/ScriptsRunner/",
                                                title="读取脚本",
                                                filetypes=(("Data files", "*.data"), ("All files", "*.*")))
-
-        if file_path:
-            try:
-                with open(file_path, "rb") as file:
-                    loaded_data = pickle.load(file)
-                    # 更新脚本数据
-                    self.scripts = loaded_data if loaded_data else []
-                    self.load_all_script()
-            except FileNotFoundError:
-                pass
+        try:
+            with open(file_path, "rb") as file:
+                data = pickle.load(file)
+            if isinstance(data, list):  # 检查数据是否是列表类型
+                return data
+            elif isinstance(data, dict):  # 检查数据是否是字典类型
+                string_array = [f"{key}: {value}" for key, value in data.items()]
+                self.scripts = string_array
+                self.load_all_script()
+        except FileNotFoundError:
+            return None
 
     def load_ordinary(self):
         try:
             with open(self.file_name, "rb") as file:
                 data = pickle.load(file)
             if isinstance(data, list):  # 检查数据是否是列表类型
-                return data  # 如果是列表类型，则直接返回
+                return data
             elif isinstance(data, dict):  # 检查数据是否是字典类型
-                # 如果是字典类型，则转化为字符串数组
                 string_array = [f"{key}: {value}" for key, value in data.items()]
                 return string_array
         except FileNotFoundError:
             return None
 
     def load_all_script(self):
+        self.operation_name_entry.delete(0, 'end')
+        self.target_image_path.delete(0, 'end')
         for script in self.scripts:
             if script.startswith("target_image_path:"):
                 target_image = script.split(": ")[1]
@@ -443,12 +448,16 @@ class ImageScannerApp(tk.Frame):
         self.target_image_path_str = self.target_image_path.get()
         self.target_image = self.load_target_image(self.target_image_path_str)
         self.main.iconify()  # 将窗口最小化
-        self.scan_loop()
+        self.scan_thread = threading.Thread(target=self.scan_loop())
+        self.scan_thread.start()
 
     def stop_scanning(self):
         self.scanning = False
         print("停止扫描")  # 输出“停止扫描”
         self.scanning_status_label.config(text="停止扫描")
+        if self.scan_thread is not None:
+            self.scan_thread.join()  # 等待线程结束
+        self.scan_thread = None
 
     def browse_target_image(self):
         self.target_image_path_str = filedialog.askopenfilename(initialdir="C://Users//hp//OneDrive//桌面//limbus",
@@ -486,7 +495,7 @@ class ImageScannerApp(tk.Frame):
     def on_release_select(self, event):
         self.end_x = event.x  # 记录鼠标释放时的横坐标
         self.end_y = event.y  # 记录鼠标释放时的纵坐标
-        self.master.attributes("-alpha", 1.0)  # 恢复窗口透明度
+        self.main.attributes("-alpha", 1.0)  # 恢复窗口透明度
         self.main.state('normal')  # 恢复窗口大小
         self.manual_select_mode = False  # 退出手动框选模式
         self.scanning_status_label.config(
@@ -519,8 +528,16 @@ class ImageScannerApp(tk.Frame):
 
                                 self.scanning_status_label.config(
                                     text=f"匹配成功：({x}, {y}) to ({x + self.target_image.shape[1]}, {y + self.target_image.shape[0]})")
-                                time.sleep(10)
                                 break
+
+                    # region = (x1, y1, x2, y2)
+                    # screen_region = np.array(screenshot.crop(region))
+                    # result = self.compare_images(screen_region, self.target_image)
+                    # if result:
+                    #     match_found = True
+                    #     self.operation_settings_window.execute_operations()
+                    #     self.scanning_status_label.config(text=f"匹配成功：({x1}, {y1}) to ({x2}, {y2})")
+
                     if not match_found:
                         self.scanning_status_label.config(text="没有符合的区域")
                     screenshot.close()
@@ -546,7 +563,6 @@ class ImageScannerApp(tk.Frame):
 
                                 self.scanning_status_label.config(
                                     text=f"匹配成功：({x}, {y}) to ({x + self.target_image.shape[1]}, {y + self.target_image.shape[0]})")
-                                time.sleep(10)
                                 break
                     if not match_found:
                         self.scanning_status_label.config(text="没有符合的区域")
@@ -576,11 +592,8 @@ class MainDesk(tk.Tk):
         self.sub_windows.append(sub_window)
 
         tab_name = f"Tab {len(self.sub_windows)}"
-        self.notebook.add(sub_window, text=tab_name)
-        self.notebook.select(sub_window)
-
-    def minimize_main_window(self):
-        self.iconify()
+        self.notebook.add(sub_window, text=tab_name)  # 设置 state 为 "hidden"
+        self.notebook.select(sub_window)  # 选中新添加的 tab
 
 
 if __name__ == "__main__":

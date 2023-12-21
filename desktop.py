@@ -1,9 +1,12 @@
+import json
 import os
 import pickle
 import threading
 import time
 import tkinter as tk
 from tkinter import filedialog, ttk
+from tkinter.simpledialog import askstring
+
 import cv2
 import imagehash
 import keyboard
@@ -264,8 +267,11 @@ class ImageScannerApp(ttk.Frame):
         left_frame = ttk.Frame(self)
         left_frame.grid(row=0, column=0, padx=10)
 
-        self.scanning_status_label = tk.Label(left_frame, text="正在扫描：无", fg="red")
+        self.scanning_status_label = tk.Label(left_frame, text="未开始扫描", fg="red")
         self.scanning_status_label.pack()
+
+        self.scan_location_label = tk.Label(left_frame, text="扫描位置：未知")  # 新增的Label用于显示扫描位置
+        self.scan_location_label.pack()
 
         # 中间的部分界面
         middle_frame = ttk.Frame(self)
@@ -297,6 +303,9 @@ class ImageScannerApp(ttk.Frame):
         right_frame = ttk.Frame(self)
         right_frame.grid(row=0, column=2, padx=10)
 
+        self.current_script_label = tk.Label(right_frame, text=f"当前脚本：{self.file_name}")
+        self.current_script_label.pack()
+
         self.save_button = tk.Button(right_frame, text="保存脚本", command=self.save_script)
         self.save_button.pack(pady=10)
 
@@ -319,7 +328,6 @@ class ImageScannerApp(ttk.Frame):
             self.load_all_script()
         except FileNotFoundError:
             pass
-
 
     def stop_key(self, event):
         if self.scanning:
@@ -362,6 +370,7 @@ class ImageScannerApp(ttk.Frame):
         file_path = filedialog.askopenfilename(initialdir="C:/Users/hp/PycharmProjects/ScriptsRunner/",
                                                title="读取脚本",
                                                filetypes=(("Data files", "*.data"), ("All files", "*.*")))
+        self.file_name = os.path.basename(file_path)
         try:
             with open(file_path, "rb") as file:
                 data = pickle.load(file)
@@ -389,6 +398,8 @@ class ImageScannerApp(ttk.Frame):
     def load_all_script(self):
         self.operation_name_entry.delete(0, 'end')
         self.target_image_path.delete(0, 'end')
+        self.current_script_label.config(
+                            text=f"当前脚本：{self.file_name}")
         for script in self.scripts:
             if script.startswith("target_image_path:"):
                 target_image = script.split(": ")[1]
@@ -437,16 +448,18 @@ class ImageScannerApp(ttk.Frame):
 
     def start_scanning(self):
         self.scanning = True
+        x1, y1, x2, y2 = self.manual_selection_coordinates
         self.target_image_path_str = self.target_image_path.get()
         self.target_image = self.load_target_image(self.target_image_path_str)
+        self.scanning_status_label.config(text="扫描中")
+        self.scan_location_label.config(text=f"({x1}, {y1})\n({x2}, {y2})")
         self.main.iconify()  # 将窗口最小化
         self.scan_thread = threading.Thread(target=self.scan_loop())
         self.scan_thread.start()
 
     def stop_scanning(self):
         self.scanning = False
-        print("停止扫描")  # 输出“停止扫描”
-        self.scanning_status_label.config(text="停止扫描")
+        self.scanning_status_label.config(text="未开始扫描")
         if self.scan_thread is not None:
             self.scan_thread.join()  # 等待线程结束
         self.scan_thread = None
@@ -490,8 +503,8 @@ class ImageScannerApp(ttk.Frame):
         self.main.attributes("-alpha", 1.0)  # 恢复窗口透明度
         self.main.state('normal')  # 恢复窗口大小
         self.manual_select_mode = False  # 退出手动框选模式
-        self.scanning_status_label.config(
-            text=f"正在扫描：({self.start_x}, {self.start_y}) 到 ({self.end_x}, {self.end_y})")
+        self.scan_location_label.config(
+            text=f"({self.start_x}, {self.start_y}) \n({self.end_x}, {self.end_y})")
         self.master.unbind('<Motion>')  # 解绑鼠标移动事件
         self.master.unbind('<ButtonPress-1>')  # 解绑鼠标左键按下事件
         self.master.unbind('<ButtonRelease-1>')  # 解绑鼠标左键释放事件
@@ -514,11 +527,13 @@ class ImageScannerApp(ttk.Frame):
                     result = self.compare_images_with_template_matching(screen_region, self.target_image)
                     if result:
                         self.operation_settings_window.execute_operations()
-                        print("匹配成功")
                         self.scanning_status_label.config(
-                            text=f"匹配成功：({x1}, {y1}) to ({x1 + self.target_image.shape[1]}, {y1 + self.target_image.shape[0]})")
+                            text="扫描中")
+                        self.scan_location_label.config(
+                            text=f"({x1}, {y1}) \n ({x1 + self.target_image.shape[1]}, {y1 + self.target_image.shape[0]})")
                     else:
-                        self.scanning_status_label.config(text="没有符合的区域")
+                        self.scan_location_label.config(
+                            text=f"({x1}, {y1}) \n ({x1 + self.target_image.shape[1]}, {y1 + self.target_image.shape[0]})")
                 screenshot.close()
             self.master.after(100, self.scan_loop)
 
@@ -534,6 +549,10 @@ class MainDesk(tk.Tk):
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(fill="both", expand=True)
 
+        self.style = ttk.Style()
+        self.style.theme_use('clam')
+        # 设置未选中标签页的外观
+
         self.create_menu_bar()  # 创建菜单条
         self.sub_windows = []
 
@@ -545,8 +564,9 @@ class MainDesk(tk.Tk):
         file_menu = tk.Menu(menu_bar, tearoff=0)
         file_menu.add_command(label="新扫描", command=self.add_image_scanner_app)
         file_menu.add_command(label="删除扫描", command=self.delete_image_scanner_app)
-        file_menu.add_command(label="保存扫描列")
-        file_menu.add_command(label="导入扫描列")
+        file_menu.add_command(label="修改扫描名", command=self.rename_tab)
+        file_menu.add_command(label="保存扫描列", command=self.save_scan_columns)
+        file_menu.add_command(label="导入扫描列", command=self.load_scan_columns)
 
         menu_bar.add_cascade(label="操作", menu=file_menu)
         self.config(menu=menu_bar)
@@ -556,8 +576,18 @@ class MainDesk(tk.Tk):
         self.sub_windows.append(sub_window)
 
         tab_name = f"Tab {len(self.sub_windows)}"
-        self.notebook.add(sub_window, text=tab_name)  # 设置 state 为 "hidden"
+        new_name = askstring("修改扫描名", "请输入新的扫描名", initialvalue=tab_name)
+        if new_name:
+            self.notebook.add(sub_window, text=new_name)  # 设置 state 为 "hidden"
         self.notebook.select(sub_window)  # 选中新添加的 tab
+
+    def rename_tab(self):
+        current_tab = self.notebook.select()
+        if current_tab:
+            tab_name = self.notebook.tab(current_tab, "text")
+            new_name = askstring("修改扫描名", "请输入新的扫描名", initialvalue=tab_name)
+            if new_name:
+                self.notebook.tab(current_tab, text=new_name)
 
     def delete_image_scanner_app(self):
         current_tab = self.notebook.select()
@@ -565,9 +595,31 @@ class MainDesk(tk.Tk):
             self.notebook.forget(current_tab)
 
     def handle_escape(self, event):
-        self.focus_force()   # 窗口置顶
+        self.focus_force()  # 窗口置顶
         self.state('normal')  # 恢复正常状态
         self.lift()  # 将主窗口放置在其他窗口之上
+
+    def save_scan_columns(self):
+        data = {}
+        for sub_window in self.sub_windows:
+            tab_name = self.notebook.tab(sub_window, "text")
+            file_name = sub_window.file_name
+            data[tab_name] = file_name
+
+        with open("scan_columns_data.json", "w") as file:
+            json.dump(data, file)
+
+    def load_scan_columns(self):
+        try:
+            with open("scan_columns_data.json", "r") as file:
+                data = json.load(file)
+                for tab_name, file_name in data.items():
+                    sub_window = ImageScannerApp(self.notebook, self, list_name=tab_name)
+                    sub_window.file_name = file_name  # 设置每个子窗口的file_name
+                    self.notebook.add(sub_window, text=tab_name)
+                    self.sub_windows.append(sub_window)
+        except FileNotFoundError:
+            pass
 
 
 if __name__ == "__main__":

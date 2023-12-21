@@ -236,11 +236,11 @@ class OperationList:
             self.operation_listbox.insert(tk.END, operation)
 
 
-class ImageScannerApp(tk.Frame):
+class ImageScannerApp(ttk.Frame):
     def __init__(self, master, main, list_name="NewScript"):
         super().__init__(master)
         self.scan_thread = None
-        self.master = master # 本页面（notebook）的设置
+        self.master = master  # 本页面（notebook）的设置
         self.main = main  # 主页面的设置
 
         # 参数的初始化
@@ -251,25 +251,25 @@ class ImageScannerApp(tk.Frame):
         self.operation_settings_window.set_list_name(self.operation_filename)
         self.operation_settings_window.destroy_self()
 
-        self.scanning = False   # 是否扫描
+        self.scanning = False  # 是否扫描
 
-        self.manual_selection_coordinates = None   # 框选的扫描
+        self.manual_selection_coordinates = None  # 框选的扫描
 
-        self.manual_select_mode = False   # 是否是第一次匹配
+        self.manual_select_mode = False  # 是否是第一次匹配
 
-        self.list_name = list_name   # 读取文件名称，list_name是默认的名字···
+        self.list_name = list_name  # 读取文件名称，list_name是默认的名字···
         self.file_name = f"{list_name}.data"
 
         # 左侧的部分界面
-        left_frame = tk.Frame(self.master)
-        left_frame.pack(side="left", padx=10)
+        left_frame = ttk.Frame(self)
+        left_frame.grid(row=0, column=0, padx=10)
 
         self.scanning_status_label = tk.Label(left_frame, text="正在扫描：无", fg="red")
         self.scanning_status_label.pack()
 
         # 中间的部分界面
-        middle_frame = tk.Frame(self.master)
-        middle_frame.pack(side="left", padx=10)
+        middle_frame = ttk.Frame(self)
+        middle_frame.grid(row=0, column=1, padx=10)
 
         self.start_button = tk.Button(middle_frame, text="开始扫描", command=self.start_scanning)
         self.start_button.pack(pady=10)
@@ -294,8 +294,8 @@ class ImageScannerApp(tk.Frame):
         self.operation_settings_button.pack(pady=10)
 
         # 右边的部分界面
-        right_frame = tk.Frame(self.master)
-        right_frame.pack(side="left", padx=10)
+        right_frame = ttk.Frame(self)
+        right_frame.grid(row=0, column=2, padx=10)
 
         self.save_button = tk.Button(right_frame, text="保存脚本", command=self.save_script)
         self.save_button.pack(pady=10)
@@ -311,6 +311,7 @@ class ImageScannerApp(tk.Frame):
 
         self.browse_operation_button = tk.Button(right_frame, text="浏览文件", command=self.browse_operation_file)
         self.browse_operation_button.pack(pady=5)
+
         keyboard.on_press_key("esc", self.stop_key)
 
         try:
@@ -318,6 +319,7 @@ class ImageScannerApp(tk.Frame):
             self.load_all_script()
         except FileNotFoundError:
             pass
+
 
     def stop_key(self, event):
         if self.scanning:
@@ -532,12 +534,22 @@ class MainDesk(tk.Tk):
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(fill="both", expand=True)
 
-        self.create_add_button()
+        self.create_menu_bar()  # 创建菜单条
         self.sub_windows = []
 
-    def create_add_button(self):
-        add_button = tk.Button(self, text="Add ImageScannerApp", command=self.add_image_scanner_app)
-        add_button.pack(pady=10)
+        keyboard.on_press_key("esc", self.handle_escape)  # 监听全局的 "Escape" 键按下事件
+
+    def create_menu_bar(self):
+        menu_bar = tk.Menu(self)
+
+        file_menu = tk.Menu(menu_bar, tearoff=0)
+        file_menu.add_command(label="新扫描", command=self.add_image_scanner_app)
+        file_menu.add_command(label="删除扫描", command=self.delete_image_scanner_app)
+        file_menu.add_command(label="保存扫描列")
+        file_menu.add_command(label="导入扫描列")
+
+        menu_bar.add_cascade(label="操作", menu=file_menu)
+        self.config(menu=menu_bar)
 
     def add_image_scanner_app(self):
         sub_window = ImageScannerApp(self.notebook, self)
@@ -546,6 +558,16 @@ class MainDesk(tk.Tk):
         tab_name = f"Tab {len(self.sub_windows)}"
         self.notebook.add(sub_window, text=tab_name)  # 设置 state 为 "hidden"
         self.notebook.select(sub_window)  # 选中新添加的 tab
+
+    def delete_image_scanner_app(self):
+        current_tab = self.notebook.select()
+        if current_tab:
+            self.notebook.forget(current_tab)
+
+    def handle_escape(self, event):
+        self.focus_force()   # 窗口置顶
+        self.state('normal')  # 恢复正常状态
+        self.lift()  # 将主窗口放置在其他窗口之上
 
 
 if __name__ == "__main__":

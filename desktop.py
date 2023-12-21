@@ -1,16 +1,15 @@
 import os
+import pickle
 import threading
 import time
 import tkinter as tk
 from tkinter import filedialog, ttk
 import cv2
+import imagehash
+import keyboard
 import numpy as np
 import pyautogui
-import pygetwindow as gw
 from PIL import Image, ImageGrab, ImageTk
-import imagehash
-import pickle
-import keyboard
 
 
 class OperationList:
@@ -252,11 +251,6 @@ class ImageScannerApp(tk.Frame):
         self.operation_settings_window.set_list_name(self.operation_filename)
         self.operation_settings_window.destroy_self()
 
-        self.bx = None  # 用于第二次减少时间的二次数据保存位置
-        self.by = None
-        self.ex = None
-        self.ey = None
-
         self.scanning = False   # 是否扫描
 
         self.manual_selection_coordinates = None   # 框选的扫描
@@ -419,25 +413,22 @@ class ImageScannerApp(tk.Frame):
         target_image = np.array(target_image)
         return target_image
 
-    def compare_images(self, image1, image2, downscale_factor=0.2):
-        image1_pil = Image.fromarray(cv2.cvtColor(image1, cv2.COLOR_BGR2RGB))
-        image2_pil = Image.fromarray(cv2.cvtColor(image2, cv2.COLOR_BGR2RGB))
-        image1_pil = image1_pil.resize(
-            (int(image1_pil.width * downscale_factor), int(image1_pil.height * downscale_factor)))
-        image2_pil = image2_pil.resize(
-            (int(image2_pil.width * downscale_factor), int(image2_pil.height * downscale_factor)))
-        # 计算感知哈希值
-        hash1 = imagehash.phash(image1_pil)
-        hash2 = imagehash.phash(image2_pil)
+    def compare_images_with_template_matching(self, image1, image2):
+        # 将图像转换为灰度图
+        gray_image1 = cv2.cvtColor(image1, cv2.COLOR_BGR2GRAY)
+        gray_image2 = cv2.cvtColor(image2, cv2.COLOR_BGR2GRAY)
 
-        # 比较哈希值之间的汉明距离
-        hamming_distance = hash1 - hash2
+        # 使用模板匹配
+        result = cv2.matchTemplate(gray_image1, gray_image2, cv2.TM_CCOEFF_NORMED)
 
-        # 设定汉明距离阈值
-        similarity_threshold = 5  # 通过调整阈值来判断相似度，具体阈值可以根据实际情况调整
+        # 获取最大和最小匹配值及其位置
+        _, max_val, _, max_loc = cv2.minMaxLoc(result)
 
-        # 判断汉明距离是否小于阈值
-        if hamming_distance <= similarity_threshold:
+        # 设置相似度阈值
+        similarity_threshold = 0.80  # 通过调整阈值来判断相似度，具体阈值可以根据实际情况调整
+
+        # 判断匹配值是否大于阈值
+        if max_val >= similarity_threshold:
             return True  # 图片相似
         else:
             return False  # 图片不相似
@@ -514,43 +505,18 @@ class ImageScannerApp(tk.Frame):
                 if self.manual_selection_coordinates is not None:
                     x1, y1, x2, y2 = self.manual_selection_coordinates
                     screenshot = self.take_screenshot()
-                    match_found = False
-                    for y in range(y1, y2):
-                        for x in range(x1, x2):
-                            region = (x, y, x + self.target_image.shape[1], y + self.target_image.shape[0])
-                            screen_region = np.array(screenshot.crop(region))
-                            result = self.compare_images(screen_region, self.target_image)
-                            if result:
-                                match_found = True
-                                print(region)
-                                self.bx = x1
-                                self.by = y1
-                                self.ex = x1 + self.target_image.shape[1]
-                                self.ey = y1 + self.target_image.shape[0]
 
-                                self.manual_select_mode = True
-                                self.operation_settings_window.execute_operations()
-                                self.scanning_status_label.config(
-                                    text=f"匹配成功：({x}, {y}) to ({x + self.target_image.shape[1]}, {y + self.target_image.shape[0]})")
-                                break
-                    if not match_found:
+                    region = (x1, y1, x2, y2)
+                    screen_region = np.array(screenshot.crop(region))
+
+                    result = self.compare_images_with_template_matching(screen_region, self.target_image)
+                    if result:
+                        self.operation_settings_window.execute_operations()
+                        print("匹配成功")
+                        self.scanning_status_label.config(
+                            text=f"匹配成功：({x1}, {y1}) to ({x1 + self.target_image.shape[1]}, {y1 + self.target_image.shape[0]})")
+                    else:
                         self.scanning_status_label.config(text="没有符合的区域")
-                    screenshot.close()
-            else:
-                screenshot = self.take_screenshot()
-                # region = (self.bx, self.by, self.ex, self.ey)
-                region = (1627, 74, 1702, 121)
-                print("第二次进入")
-                print(region)
-                screen_region = np.array(screenshot.crop(region))
-                result = self.compare_images(screen_region, self.target_image)
-                if result:
-                    print(region)
-                    self.operation_settings_window.execute_operations()
-                    self.scanning_status_label.config(text=f"二次匹配成功!")
-                else:
-                    self.scanning_status_label.config(text="没有符合的区域")
-                    time.sleep(1)
                 screenshot.close()
             self.master.after(100, self.scan_loop)
 

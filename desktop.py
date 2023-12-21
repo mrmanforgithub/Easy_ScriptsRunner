@@ -391,6 +391,7 @@ class ImageScannerApp(ttk.Frame):
                 return data
             elif isinstance(data, dict):  # 检查数据是否是字典类型
                 string_array = [f"{key}: {value}" for key, value in data.items()]
+                self.scripts = string_array
                 return string_array
         except FileNotFoundError:
             return None
@@ -557,6 +558,11 @@ class MainDesk(tk.Tk):
         self.sub_windows = []
 
         keyboard.on_press_key("esc", self.handle_escape)  # 监听全局的 "Escape" 键按下事件
+        keyboard.on_press_key("F1", self.execute_start_scanning)
+
+    def execute_start_scanning(self, event):
+        for sub_window in self.sub_windows:
+            sub_window.start_scanning()
 
     def create_menu_bar(self):
         menu_bar = tk.Menu(self)
@@ -600,26 +606,36 @@ class MainDesk(tk.Tk):
         self.lift()  # 将主窗口放置在其他窗口之上
 
     def save_scan_columns(self):
-        data = {}
-        for sub_window in self.sub_windows:
-            tab_name = self.notebook.tab(sub_window, "text")
-            file_name = sub_window.file_name
-            data[tab_name] = file_name
+        file_path = filedialog.asksaveasfilename(initialdir="C:/Users/hp/PycharmProjects/ScriptsRunner/",
+                                                 title="保存扫描列",
+                                                 filetypes=(("Json", "*.json"), ("All files", "*.*")))
+        if file_path:
+            data = {}
+            for sub_window in self.sub_windows:
+                tab_name = self.notebook.tab(sub_window, "text")
+                file_name = sub_window.file_name
+                data[tab_name] = file_name
 
-        with open("scan_columns_data.json", "w") as file:
-            json.dump(data, file)
+            with open(file_path, "w") as file:
+                json.dump(data, file)
 
     def load_scan_columns(self):
-        try:
-            with open("scan_columns_data.json", "r") as file:
-                data = json.load(file)
-                for tab_name, file_name in data.items():
-                    sub_window = ImageScannerApp(self.notebook, self, list_name=tab_name)
-                    sub_window.file_name = file_name  # 设置每个子窗口的file_name
-                    self.notebook.add(sub_window, text=tab_name)
-                    self.sub_windows.append(sub_window)
-        except FileNotFoundError:
-            pass
+        file_path = filedialog.askopenfilename(initialdir="C:/Users/hp/PycharmProjects/ScriptsRunner/",
+                                               title="读取扫描列",
+                                               filetypes=(("Json", "*.json"), ("All files", "*.*")))
+        if file_path:
+            try:
+                with open(file_path, "r") as file:
+                    data = json.load(file)
+                    for tab_name, file_name in data.items():
+                        sub_window = ImageScannerApp(self.notebook, self, list_name=file_name)
+                        sub_window.file_name = file_name  # 设置每个子窗口的file_name
+                        sub_window.load_ordinary()
+                        sub_window.load_all_script()
+                        self.notebook.add(sub_window, text=tab_name)
+                        self.sub_windows.append(sub_window)
+            except FileNotFoundError:
+                pass
 
 
 if __name__ == "__main__":

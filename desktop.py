@@ -8,7 +8,6 @@ from tkinter import filedialog, ttk
 from tkinter.simpledialog import askstring
 
 import cv2
-import imagehash
 import keyboard
 import numpy as np
 import pyautogui
@@ -16,9 +15,10 @@ from PIL import Image, ImageGrab, ImageTk
 
 
 class OperationList:
-    def __init__(self, root, list_name="NewOperation"):
+    def __init__(self, root, parent, list_name="NewOperation"):
         self.root = root
-
+        self.parent = parent
+        self.scroll_time = None
         self.wait_time = None
         self.key_position = None
         self.click_position = None
@@ -71,6 +71,31 @@ class OperationList:
         if file_path:
             with open(file_path, 'wb') as file:
                 pickle.dump(self.operations, file)
+            with open(file_path, 'rb') as file:
+                self.operations = pickle.load(file)
+                self.populate_operation_list()
+                file_name = os.path.basename(file_path)  # Extract the file name without extension
+                list_name = os.path.splitext(file_name)[0]
+                self.set_list_name(list_name)
+                self.setting_window.lift()
+                self.setting_window.focus_set()
+                self.parent.operation_filename = os.path.basename(file_path)
+                self.parent.save_default_script(self.parent.file_name)
+
+    def save_default_operations(self, file_path):
+        if file_path:
+            with open(file_path, 'wb') as file:
+                pickle.dump(self.operations, file)
+            with open(file_path, 'rb') as file:
+                self.operations = pickle.load(file)
+                self.populate_operation_list()
+                file_name = os.path.basename(file_path)  # Extract the file name without extension
+                list_name = os.path.splitext(file_name)[0]
+                self.set_list_name(list_name)
+                self.setting_window.lift()
+                self.setting_window.focus_set()
+                self.parent.operation_filename = os.path.basename(file_path)
+                self.parent.save_default_script(self.parent.file_name)
 
     def load_all_operations(self):
         file_path = filedialog.askopenfilename(initialdir="C:/Users/hp/PycharmProjects/ScriptsRunner/",
@@ -89,21 +114,31 @@ class OperationList:
     def destroy_self(self):
         self.setting_window.destroy()
 
-    def show_add_operation_options(self):
+    def show_add_operation_options(self, position=tk.END):
         self.add_options_window = tk.Toplevel(self.setting_window)
         self.add_options_window.title("添加操作选项")
         self.add_options_window.lift()
         self.add_options_window.focus_set()
         self.add_options_window.geometry("400x300")
-        wait_button = tk.Button(self.add_options_window, text="等待", command=self.add_wait_operation_window)
+        wait_button = tk.Button(self.add_options_window, text="等待",
+                                command=lambda: self.add_wait_operation_window(position=position))
         wait_button.pack(pady=5)
 
         keyboard_button = tk.Button(self.add_options_window, text="键盘操作",
-                                    command=self.add_keyboard_operation_window)
+                                    command=lambda: self.add_keyboard_operation_window(position=position))
         keyboard_button.pack(pady=5)
 
-        mouse_button = tk.Button(self.add_options_window, text="鼠标操作", command=self.add_mouse_operation_window)
+        mouse_button = tk.Button(self.add_options_window, text="鼠标操作",
+                                 command=lambda: self.add_mouse_operation_window(position=position))
         mouse_button.pack(pady=5)
+
+        scroll_button = tk.Button(self.add_options_window, text="滚轮操作",
+                                  command=lambda: self.add_scroll_operation_window(position=position))
+        scroll_button.pack(pady=5)
+
+        pathfinding_button = tk.Button(self.add_options_window, text="自动寻路",
+                                       command=lambda: self.add_pathfinding_operation_window(position=position))
+        pathfinding_button.pack(pady=5)
         pass
 
     def set_list_name(self, list_name):
@@ -129,34 +164,43 @@ class OperationList:
         self.operations = default_operations
         self.save_operations()
 
-    def add_wait_operation(self, wait_time):
-        self.operation_listbox.insert(tk.END, f"等待：{wait_time}ms")
+    def add_wait_operation(self, wait_time, position):
+        self.operation_listbox.insert(position, f"等待：{wait_time}ms")
         self.operations.append(f"等待：{wait_time}ms")
         self.save_operations()
 
-    def add_keyboard_operation(self, key_position):
-        self.operation_listbox.insert(tk.END, f"键盘操作：按键位置 - {key_position}")
+    def add_scroll_operation(self, scroll_time, position):
+        self.operation_listbox.insert(position, f"滚轮：{scroll_time}步")
+        self.operations.append(f"滚轮：{scroll_time}步")
+        self.save_operations()
+
+    def add_keyboard_operation(self, key_position, position):
+        self.operation_listbox.insert(position, f"键盘操作：按键位置 - {key_position}")
         self.operations.append(f"键盘操作：按键位置 - {key_position}")
         self.save_operations()
 
-    def add_mouse_operation(self, click_position):
-        self.operation_listbox.insert(tk.END, f"鼠标操作：点击位置 - {click_position}")
+    def add_mouse_operation(self, click_position, position):
+        self.operation_listbox.insert(position, f"鼠标操作：点击位置 - {click_position}")
         self.operations.append(f"鼠标操作：点击位置 - {click_position}")
         self.save_operations()
 
-    def set_wait_time(self, wait_time):
+    def set_wait_time(self, wait_time, position):
         self.wait_time = wait_time
-        self.add_wait_operation(self.wait_time)
+        self.add_wait_operation(self.wait_time, position=position)
 
-    def set_key_position(self, key_position):
+    def set_scroll_time(self, scroll_time, position):
+        self.scroll_time = scroll_time
+        self.add_scroll_operation(self.scroll_time, position=position)
+
+    def set_key_position(self, key_position, position):
         self.key_position = key_position
-        self.add_keyboard_operation(self.key_position)
+        self.add_keyboard_operation(self.key_position, position=position)
 
-    def set_click_position(self, click_position):
+    def set_click_position(self, click_position, position):
         self.click_position = click_position
-        self.add_mouse_operation(self.click_position)
+        self.add_mouse_operation(self.click_position, position=position)
 
-    def add_wait_operation_window(self):
+    def add_wait_operation_window(self, position):
         wait_window = tk.Toplevel(self.setting_window)
         wait_window.title("等待时间")
         wait_window.geometry("400x300")
@@ -168,10 +212,27 @@ class OperationList:
         wait_entry = tk.Entry(wait_window)
         wait_entry.pack(pady=5)
         wait_button = tk.Button(wait_window, text="确认",
-                                command=lambda: [self.set_wait_time(int(wait_entry.get())), wait_window.destroy()])
+                                command=lambda: [self.set_wait_time(int(wait_entry.get()), position=position),
+                                                 wait_window.destroy()])
         wait_button.pack(pady=5)
 
-    def add_keyboard_operation_window(self):
+    def add_scroll_operation_window(self, position):
+        scroll_window = tk.Toplevel(self.setting_window)
+        scroll_window.title("滚轮操作")
+        scroll_window.geometry("400x300")
+        scroll_window.lift()
+        scroll_window.focus_set()
+        self.add_options_window.destroy()
+        scroll_label = tk.Label(scroll_window, text="请输入滚轮步数（正数向上）：")
+        scroll_label.pack(pady=5)
+        scroll_entry = tk.Entry(scroll_window)
+        scroll_entry.pack(pady=5)
+        scroll_button = tk.Button(scroll_window, text="确认",
+                                  command=lambda: [self.set_scroll_time(int(scroll_entry.get()), position=position),
+                                                   scroll_window.destroy()])
+        scroll_button.pack(pady=5)
+
+    def add_keyboard_operation_window(self, position):
         keyboard_window = tk.Toplevel(self.setting_window)
         keyboard_window.title("键盘操作")
         keyboard_window.geometry("400x300")
@@ -182,12 +243,15 @@ class OperationList:
         keyboard_label.pack(pady=5)
 
         def record_key_press(event):
-            self.set_key_position(event.keysym)
+            if event.keysym == "Return":
+                self.set_key_position("enter", position=position)
+            else:
+                self.set_key_position(event.keysym, position=position)
             keyboard_window.destroy()
 
         keyboard_window.bind("<Key>", record_key_press)
 
-    def add_mouse_operation_window(self):
+    def add_mouse_operation_window(self, position):
         self.add_options_window.destroy()
         mouse_window = tk.Toplevel(self.setting_window)
         mouse_window.attributes('-alpha', 0.5)  # Set transparency
@@ -198,7 +262,7 @@ class OperationList:
 
         def record_click_position(event):
             click_position = f"({event.x}, {event.y})"
-            self.set_click_position(click_position)
+            self.set_click_position(click_position, position=position)
             mouse_window.destroy()
 
         mouse_window.bind("<Button-1>", record_click_position)
@@ -206,11 +270,11 @@ class OperationList:
     def modify_selected_operation(self):
         selected_index = self.operation_listbox.curselection()
         if selected_index:
-            del self.operations[selected_index[0]]
-            self.show_add_operation_options()
+            new_operation_position = selected_index[0]
+            del self.operations[new_operation_position]
+            self.show_add_operation_options(position=new_operation_position)
             self.save_operations()
             self.populate_operation_list()
-        pass
 
     def delete_selected_operation(self):
         selected_index = self.operation_listbox.curselection()
@@ -224,6 +288,9 @@ class OperationList:
             if operation.startswith("等待"):
                 wait_time = int(operation.split("：")[1].strip("ms"))
                 time.sleep(wait_time / 1000)  # Convert milliseconds to seconds and wait
+            elif operation.startswith("滚轮"):
+                scroll_time = int(operation.split("：")[1].strip("步"))
+                pyautogui.scroll(scroll_time)  # 执行滚轮
             elif operation.startswith("键盘操作"):
                 key_position = operation.split(" - ")[1]
                 pyautogui.press(key_position)  # Simulate keyboard press
@@ -250,7 +317,7 @@ class ImageScannerApp(ttk.Frame):
         self.file_path = None
         self.operation_filename = "NewOperation"
 
-        self.operation_settings_window = OperationList(root)
+        self.operation_settings_window = OperationList(root, parent=self)
         self.operation_settings_window.set_list_name(self.operation_filename)
         self.operation_settings_window.destroy_self()
 
@@ -333,6 +400,10 @@ class ImageScannerApp(ttk.Frame):
         if self.scanning:
             self.stop_scanning()
 
+    def init_new(self):
+        self.operation_settings_window = OperationList(self.master, parent=self)
+        self.operation_settings_window.set_list_name(self.operation_filename)
+
     def browse_operation_file(self):
         filename = filedialog.askopenfilename(initialdir="C:/Users/hp/PycharmProjects/ScriptsRunner/",
                                               title="操作列表", defaultextension=".data",
@@ -347,6 +418,7 @@ class ImageScannerApp(ttk.Frame):
         file_path = filedialog.asksaveasfilename(initialdir="C:/Users/hp/PycharmProjects/ScriptsRunner/",
                                                  title="保存脚本", defaultextension=".data",
                                                  filetypes=(("Data files", "*.data"), ("All files", "*.*")))
+        self.file_name = os.path.basename(file_path)
         if file_path:
             data = {
                 "target_image_path": self.target_image_path.get(),
@@ -360,6 +432,49 @@ class ImageScannerApp(ttk.Frame):
             existing_data.update(data)  # 更新已存在的属性或添加新属性
             with open(file_path, 'wb') as file:
                 pickle.dump(existing_data, file)
+
+            try:
+                with open(file_path, "rb") as file:
+                    data = pickle.load(file)
+                if isinstance(data, list):  # 检查数据是否是列表类型
+                    return data
+                elif isinstance(data, dict):  # 检查数据是否是字典类型
+                    string_array = [f"{key}: {value}" for key, value in data.items()]
+                    self.scripts = string_array
+                    self.load_all_script()
+            except FileNotFoundError:
+                return None
+
+    def save_default_script(self, file_path):
+        self.file_name = os.path.basename(file_path)
+        if file_path:
+            data = {
+                "target_image_path": self.target_image_path.get(),
+                "manual_selection_coordinates": self.manual_selection_coordinates,
+                "operation_filename": self.operation_filename
+            }
+            existing_data = {}
+            if os.path.exists(file_path):
+                with open(file_path, 'rb') as file:
+                    existing_data = pickle.load(file)
+            if isinstance(existing_data, dict):  # 检查数据是否是字典类型
+                existing_data.update(data)  # 更新已存在的属性或添加新属性
+            elif isinstance(existing_data, list):  # 如果数据是列表类型，可以选择合并列表
+                existing_data += data  # 更新已存在的属性或添加新属性
+            with open(file_path, 'wb') as file:
+                pickle.dump(existing_data, file)
+
+            try:
+                with open(file_path, "rb") as file:
+                    data = pickle.load(file)
+                if isinstance(data, list):  # 检查数据是否是列表类型
+                    return data
+                elif isinstance(data, dict):  # 检查数据是否是字典类型
+                    string_array = [f"{key}: {value}" for key, value in data.items()]
+                    self.scripts = string_array
+                    self.load_all_script()
+            except FileNotFoundError:
+                return None
 
     def save_ordinary(self):
         with open(self.file_name, "wb") as file:
@@ -400,7 +515,7 @@ class ImageScannerApp(ttk.Frame):
         self.operation_name_entry.delete(0, 'end')
         self.target_image_path.delete(0, 'end')
         self.current_script_label.config(
-                            text=f"当前脚本：{self.file_name}")
+            text=f"当前脚本：{self.file_name}")
         for script in self.scripts:
             if script.startswith("target_image_path:"):
                 target_image = script.split(": ")[1]
@@ -415,19 +530,22 @@ class ImageScannerApp(ttk.Frame):
                 self.operation_name_entry.insert(0, filename)
 
     def open_operation_settings_window(self):
-        self.operation_settings_window = OperationList(self.master)
+        self.operation_settings_window = OperationList(self.master, parent=self)
         self.operation_settings_window.set_list_name(self.operation_filename)
 
-    def take_screenshot(self):
+    @staticmethod
+    def take_screenshot():
         screenshot = ImageGrab.grab()
         return screenshot
 
-    def load_target_image(self, path):
+    @staticmethod
+    def load_target_image(path):
         target_image = Image.open(path)
         target_image = np.array(target_image)
         return target_image
 
-    def compare_images_with_template_matching(self, image1, image2):
+    @staticmethod
+    def compare_images_with_template_matching(image1, image2):
         # 将图像转换为灰度图
         gray_image1 = cv2.cvtColor(image1, cv2.COLOR_BGR2GRAY)
         gray_image2 = cv2.cvtColor(image2, cv2.COLOR_BGR2GRAY)
@@ -475,6 +593,7 @@ class ImageScannerApp(ttk.Frame):
 
     def open_manual_selection_window(self):
         self.main.iconify()  # 将主窗口最小化
+
         self.manual_selection_window = tk.Toplevel(self.master)  # 创建一个新的Toplevel窗口
         self.manual_selection_window.overrideredirect(True)  # 去除窗口边框
         self.manual_selection_window.attributes("-alpha", 0.1)  # 设置窗口透明度
@@ -531,10 +650,12 @@ class ImageScannerApp(ttk.Frame):
                         self.scanning_status_label.config(
                             text="扫描中")
                         self.scan_location_label.config(
-                            text=f"({x1}, {y1}) \n ({x1 + self.target_image.shape[1]}, {y1 + self.target_image.shape[0]})")
+                            text=f"({x1}, {y1}) \n ({x1 + self.target_image.shape[1]}, "
+                                 f"{y1 + self.target_image.shape[0]})")
                     else:
                         self.scan_location_label.config(
-                            text=f"({x1}, {y1}) \n ({x1 + self.target_image.shape[1]}, {y1 + self.target_image.shape[0]})")
+                            text=f"({x1}, {y1}) \n ({x1 + self.target_image.shape[1]}, "
+                                 f"{y1 + self.target_image.shape[0]})")
                 screenshot.close()
             self.master.after(100, self.scan_loop)
 
@@ -542,6 +663,14 @@ class ImageScannerApp(ttk.Frame):
 class MainDesk(tk.Tk):
     def __init__(self):
         super().__init__()
+        # 数据初始化
+        self.entry_operation = None
+        self.entry_script = None
+        self.entry_scan_columns = None
+        self.entry_location = None
+        self.folder_path = None
+
+        # 界面初始化
         self.geometry("600x500")
         self.title("Script_Runner")
         self.lift()
@@ -573,9 +702,96 @@ class MainDesk(tk.Tk):
         file_menu.add_command(label="修改扫描名", command=self.rename_tab)
         file_menu.add_command(label="保存扫描列", command=self.save_scan_columns)
         file_menu.add_command(label="导入扫描列", command=self.load_scan_columns)
+        file_menu.add_command(label="一键保存", command=self.save_all)
 
         menu_bar.add_cascade(label="操作", menu=file_menu)
         self.config(menu=menu_bar)
+
+    def save_all(self):
+        save_window = tk.Toplevel(self)
+        save_window.title("一键保存")
+        save_window.geometry("400x200")
+        save_window.lift()
+        save_window.focus_set()
+
+        # 扫描列
+        frame_scan_columns = tk.Frame(save_window)
+        label_scan_columns = tk.Label(frame_scan_columns, text="扫描:")
+        self.entry_scan_columns = tk.Entry(frame_scan_columns)
+        label_scan_columns.pack(side="left")
+        self.entry_scan_columns.pack(side="left")
+        frame_scan_columns.pack()
+
+        # 脚本
+        frame_script = tk.Frame(save_window)
+        label_script = tk.Label(frame_script, text="脚本:")
+        self.entry_script = tk.Entry(frame_script)
+        label_script.pack(side="left")
+        self.entry_script.pack(side="left")
+        frame_script.pack()
+
+        # 操作
+        frame_operation = tk.Frame(save_window)
+        label_operation = tk.Label(frame_operation, text="操作:")
+        self.entry_operation = tk.Entry(frame_operation)
+        label_operation.pack(side="left")
+        self.entry_operation.pack(side="left")
+        frame_operation.pack()
+
+        # 位置
+        frame_location = tk.Frame(save_window)
+        label_location = tk.Label(frame_location, text="位置:")
+        self.entry_location = tk.Entry(frame_location)
+        label_location.pack(side="left")
+        self.entry_location.pack(side="left")
+        frame_location.pack()
+
+        # 保存位置按钮
+        button_save_location = tk.Button(save_window, text="选择保存位置",
+                                         command=lambda: self.open_file_manager(window=save_window))
+        button_save_location.pack()
+
+        # 确认和取消按钮
+        frame_buttons = tk.Frame(save_window)
+        button_confirm = tk.Button(frame_buttons, text="确认", command=lambda: self.confirm_save(window=save_window))
+        button_cancel = tk.Button(frame_buttons, text="取消", command=save_window.destroy)
+        button_confirm.pack(side="left")
+        button_cancel.pack(side="right")
+        frame_buttons.pack()
+
+    def confirm_save(self, window):
+        save_location = self.entry_location.get()
+        # 获取扫描列、脚本和操作的内容
+        scan_columns = self.entry_scan_columns.get()
+        script = self.entry_script.get()
+        operation = self.entry_operation.get()
+
+        scan_path = os.path.join(save_location, f"{scan_columns}.json")
+        script_path = os.path.join(save_location, f"{script}.data")
+        operation_path = os.path.join(save_location, f"{operation}.data")
+
+        # 调用当前子窗口的保存方法
+        current_index = self.notebook.index("current")
+        current_sub_window = self.sub_windows[current_index]
+
+        if script:
+            current_sub_window.save_default_script(script_path)
+        if operation and hasattr(current_sub_window, 'operation_settings_window'):
+            current_sub_window.init_new()
+            current_sub_window.operation_settings_window.save_default_operations(operation_path)
+            current_sub_window.operation_settings_window.destroy_self()
+        if scan_columns:
+            self.save_default_columns(scan_path)
+        # 在这里执行确认保存的逻辑
+        window.destroy()
+
+    def open_file_manager(self, window):
+        window.grab_set()
+        self.folder_path = filedialog.askdirectory(initialdir="C:/Users/hp/PycharmProjects/ScriptsRunner/",
+                                                   title="选择文件夹")
+        if self.folder_path:  # 如果用户选择了文件夹
+            self.entry_location.delete(0, tk.END)  # 清空原有内容
+            self.entry_location.insert(0, self.folder_path)  #
 
     def add_image_scanner_app(self):
         sub_window = ImageScannerApp(self.notebook, self)
@@ -598,12 +814,27 @@ class MainDesk(tk.Tk):
     def delete_image_scanner_app(self):
         current_tab = self.notebook.select()
         if current_tab:
+            index = self.notebook.index(current_tab)
+            sub_window = self.sub_windows[index]
             self.notebook.forget(current_tab)
+            sub_window.destroy()
+
 
     def handle_escape(self, event):
         self.focus_force()  # 窗口置顶
         self.state('normal')  # 恢复正常状态
         self.lift()  # 将主窗口放置在其他窗口之上
+
+    def save_default_columns(self, file_path):
+        if file_path:
+            data = {}
+            for sub_window in self.sub_windows:
+                tab_name = self.notebook.tab(sub_window, "text")
+                file_name = sub_window.file_name
+                data[tab_name] = file_name
+
+            with open(file_path, "w") as file:
+                json.dump(data, file)
 
     def save_scan_columns(self):
         file_path = filedialog.asksaveasfilename(initialdir="C:/Users/hp/PycharmProjects/ScriptsRunner/",
@@ -612,9 +843,10 @@ class MainDesk(tk.Tk):
         if file_path:
             data = {}
             for sub_window in self.sub_windows:
-                tab_name = self.notebook.tab(sub_window, "text")
-                file_name = sub_window.file_name
-                data[tab_name] = file_name
+                if sub_window.winfo_exists():
+                   tab_name = self.notebook.tab(sub_window, "text")
+                   file_name = sub_window.file_name
+                   data[tab_name] = file_name
 
             with open(file_path, "w") as file:
                 json.dump(data, file)

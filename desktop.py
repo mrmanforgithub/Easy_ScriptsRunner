@@ -16,6 +16,7 @@ from PIL import Image, ImageGrab, ImageTk
 
 class OperationList:
     def __init__(self, root, parent, list_name="NewOperation"):
+        self.path_position = None
         self.root = root
         self.parent = parent
         self.scroll_time = None
@@ -49,7 +50,7 @@ class OperationList:
                                                  command=self.delete_selected_operation)
         self.delete_operation_button.pack(pady=5)
 
-        self.operation_listbox = tk.Listbox(self.setting_window, selectmode="single", height=5)
+        self.operation_listbox = tk.Listbox(self.setting_window, selectmode="single", height=5, width=40)
 
         self.populate_operation_list()
         self.operation_listbox.pack(pady=5)
@@ -164,6 +165,11 @@ class OperationList:
         self.operations = default_operations
         self.save_operations()
 
+    def add_pathfinding_operation(self, pathfinding_loc, position):
+        self.operation_listbox.insert(position, f"寻路：{pathfinding_loc}")
+        self.operations.append(f"寻路：{pathfinding_loc}")
+        self.save_operations()
+
     def add_wait_operation(self, wait_time, position):
         self.operation_listbox.insert(position, f"等待：{wait_time}ms")
         self.operations.append(f"等待：{wait_time}ms")
@@ -184,6 +190,10 @@ class OperationList:
         self.operations.append(f"鼠标操作：点击位置 - {click_position}")
         self.save_operations()
 
+    def set_pathfinding_loc(self, path_position, position):
+        self.path_position = path_position
+        self.add_pathfinding_operation(self.path_position, position=position)
+
     def set_wait_time(self, wait_time, position):
         self.wait_time = wait_time
         self.add_wait_operation(self.wait_time, position=position)
@@ -199,6 +209,41 @@ class OperationList:
     def set_click_position(self, click_position, position):
         self.click_position = click_position
         self.add_mouse_operation(self.click_position, position=position)
+
+    def add_pathfinding_operation_window(self, position):
+        pathfinding_window = tk.Toplevel(self.setting_window)
+        pathfinding_window.title("自动寻路")
+        pathfinding_window.geometry("400x300")
+        pathfinding_window.lift()
+        pathfinding_window.focus_set()
+        self.add_options_window.destroy()
+
+        def validate_input(entry):
+            if entry.isdigit() or (entry.startswith('-') and entry[1:].isdigit()):
+                return True
+            else:
+                return False
+
+        def handle_confirm_click(x_entry, y_entry):
+            if validate_input(x_entry.get()) and validate_input(y_entry.get()):
+                x_value = int(x_entry.get())
+                y_value = int(y_entry.get())
+                self.set_pathfinding_loc((x_value, y_value), position=position)
+                pathfinding_window.destroy()
+
+        x_label = tk.Label(pathfinding_window, text="x（正值为＋）：")
+        x_label.pack(pady=5)
+        x_entry = tk.Entry(pathfinding_window)
+        x_entry.pack(pady=5)
+
+        y_label = tk.Label(pathfinding_window, text="y（正值为＋）：")
+        y_label.pack(pady=5)
+        y_entry = tk.Entry(pathfinding_window)
+        y_entry.pack(pady=5)
+
+        pathfinding_button = tk.Button(pathfinding_window, text="确认",
+                                       command=lambda: handle_confirm_click(x_entry, y_entry))
+        pathfinding_button.pack(pady=5)
 
     def add_wait_operation_window(self, position):
         wait_window = tk.Toplevel(self.setting_window)
@@ -288,6 +333,13 @@ class OperationList:
             if operation.startswith("等待"):
                 wait_time = int(operation.split("：")[1].strip("ms"))
                 time.sleep(wait_time / 1000)  # Convert milliseconds to seconds and wait
+            elif operation.startswith("寻路"):
+                pathfinding_loc = (operation.split("：")[1])
+                path = eval(pathfinding_loc)
+                max_loc = self.parent.max_loc
+                center_x = int((max_loc[0][0] + max_loc[1][0]) / 2)
+                center_y = int((max_loc[0][1] + max_loc[1][1]) / 2)
+                pyautogui.click(center_x + int(path[0]), center_y + int(path[1]))
             elif operation.startswith("滚轮"):
                 scroll_time = int(operation.split("：")[1].strip("步"))
                 pyautogui.scroll(scroll_time)  # 执行滚轮
@@ -309,6 +361,8 @@ class OperationList:
 class ImageScannerApp(ttk.Frame):
     def __init__(self, master, main, list_name="NewScript"):
         super().__init__(master)
+
+        self.max_loc = None
         self.scan_thread = None
         self.master = master  # 本页面（notebook）的设置
         self.main = main  # 主页面的设置
@@ -325,9 +379,9 @@ class ImageScannerApp(ttk.Frame):
 
         self.manual_selection_coordinates = None  # 框选的扫描
 
-        self.manual_select_mode = False  # 是否是第一次匹配
+        self.manual_select_mode = False  # 是否是框选匹配（已经废除）
 
-        self.list_name = list_name  # 读取文件名称，list_name是默认的名字···
+        self.list_name = list_name  # 读取文件名称，list_name是默认读取名
         self.file_name = f"{list_name}.data"
 
         # 左侧的部分界面
@@ -544,8 +598,7 @@ class ImageScannerApp(ttk.Frame):
         target_image = np.array(target_image)
         return target_image
 
-    @staticmethod
-    def compare_images_with_template_matching(image1, image2):
+    def compare_images_with_template_matching(self, image1, image2):
         # 将图像转换为灰度图
         gray_image1 = cv2.cvtColor(image1, cv2.COLOR_BGR2GRAY)
         gray_image2 = cv2.cvtColor(image2, cv2.COLOR_BGR2GRAY)
@@ -557,10 +610,15 @@ class ImageScannerApp(ttk.Frame):
         _, max_val, _, max_loc = cv2.minMaxLoc(result)
 
         # 设置相似度阈值
-        similarity_threshold = 0.80  # 通过调整阈值来判断相似度，具体阈值可以根据实际情况调整
+        similarity_threshold = 0.75  # 通过调整阈值来判断相似度
 
         # 判断匹配值是否大于阈值
         if max_val >= similarity_threshold:
+            h, w = image2.shape[:2]  # 获取模板图像的高度和宽度
+            dx, dy = self.manual_selection_coordinates[0], self.manual_selection_coordinates[1]  # 计算相对偏移量
+            top_left = (max_loc[0] + dx, max_loc[1] + dy)  # 最佳匹配位置的左上角坐标
+            bottom_right = (top_left[0] + w, top_left[1] + h)  # 最佳匹配位置的右下角坐标
+            self.max_loc = (top_left, bottom_right)
             return True  # 图片相似
         else:
             return False  # 图片不相似
@@ -666,7 +724,6 @@ class MainDesk(tk.Tk):
         # 数据初始化
         self.entry_operation = None
         self.entry_script = None
-        self.entry_scan_columns = None
         self.entry_location = None
         self.folder_path = None
 
@@ -714,14 +771,6 @@ class MainDesk(tk.Tk):
         save_window.lift()
         save_window.focus_set()
 
-        # 扫描列
-        frame_scan_columns = tk.Frame(save_window)
-        label_scan_columns = tk.Label(frame_scan_columns, text="扫描:")
-        self.entry_scan_columns = tk.Entry(frame_scan_columns)
-        label_scan_columns.pack(side="left")
-        self.entry_scan_columns.pack(side="left")
-        frame_scan_columns.pack()
-
         # 脚本
         frame_script = tk.Frame(save_window)
         label_script = tk.Label(frame_script, text="脚本:")
@@ -762,11 +811,9 @@ class MainDesk(tk.Tk):
     def confirm_save(self, window):
         save_location = self.entry_location.get()
         # 获取扫描列、脚本和操作的内容
-        scan_columns = self.entry_scan_columns.get()
         script = self.entry_script.get()
         operation = self.entry_operation.get()
 
-        scan_path = os.path.join(save_location, f"{scan_columns}.json")
         script_path = os.path.join(save_location, f"{script}.data")
         operation_path = os.path.join(save_location, f"{operation}.data")
 
@@ -780,8 +827,7 @@ class MainDesk(tk.Tk):
             current_sub_window.init_new()
             current_sub_window.operation_settings_window.save_default_operations(operation_path)
             current_sub_window.operation_settings_window.destroy_self()
-        if scan_columns:
-            self.save_default_columns(scan_path)
+
         # 在这里执行确认保存的逻辑
         window.destroy()
 

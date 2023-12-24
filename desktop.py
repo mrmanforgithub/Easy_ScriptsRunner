@@ -6,7 +6,6 @@ import time
 import tkinter as tk
 from tkinter import filedialog, ttk
 from tkinter.simpledialog import askstring
-
 import cv2
 import keyboard
 import numpy as np
@@ -17,9 +16,12 @@ from PIL import Image, ImageGrab, ImageTk
 class OperationList:
     def __init__(self, root, parent, list_name="NewOperation"):
         self.file_path = "NewOperation.data"  #默认的读取文件位置
+
+        self.chosen_index = None
         self.path_position = None
         self.root = root
         self.parent = parent
+        self.notebook = self.parent.main.notebook
         self.scroll_time = None
         self.wait_time = None
         self.key_position = None
@@ -99,6 +101,7 @@ class OperationList:
                 self.parent.operation_full_filename = file_path
                 self.parent.operation_filename = os.path.splitext(os.path.basename(file_path))[0]
                 self.parent.save_default_script(self.parent.file_path)
+                self.parent.load_all_script()
 
     def load_all_operations(self):
         file_path = filedialog.askopenfilename(initialdir=os.path.dirname(self.file_path),
@@ -113,6 +116,10 @@ class OperationList:
                 self.set_file_path(file_path)
                 self.setting_window.lift()
                 self.setting_window.focus_set()
+                self.parent.operation_full_filename = file_path
+                self.parent.operation_filename = os.path.splitext(os.path.basename(file_path))[0]
+                self.parent.save_default_script(self.parent.file_path)
+                self.parent.load_all_script()
 
     def destroy_self(self):
         self.setting_window.destroy()
@@ -123,26 +130,44 @@ class OperationList:
         self.add_options_window.lift()
         self.add_options_window.focus_set()
         self.add_options_window.geometry("400x300")
-        wait_button = tk.Button(self.add_options_window, text="等待",
+        left_frame = tk.Frame(self.add_options_window)
+        left_frame.pack(side=tk.LEFT, padx=10)
+
+        wait_button = tk.Button(left_frame, text="等待操作",
                                 command=lambda: self.add_wait_operation_window(position=position))
         wait_button.pack(pady=5)
 
-        keyboard_button = tk.Button(self.add_options_window, text="键盘操作",
+        keyboard_button = tk.Button(left_frame, text="键盘操作",
                                     command=lambda: self.add_keyboard_operation_window(position=position))
         keyboard_button.pack(pady=5)
 
-        mouse_button = tk.Button(self.add_options_window, text="鼠标操作",
+        mouse_button = tk.Button(left_frame, text="鼠标操作",
                                  command=lambda: self.add_mouse_operation_window(position=position))
         mouse_button.pack(pady=5)
 
-        scroll_button = tk.Button(self.add_options_window, text="滚轮操作",
+        scroll_button = tk.Button(left_frame, text="滚轮操作",
                                   command=lambda: self.add_scroll_operation_window(position=position))
         scroll_button.pack(pady=5)
 
-        pathfinding_button = tk.Button(self.add_options_window, text="自动寻路",
+        # 右边三个按钮
+        right_frame = tk.Frame(self.add_options_window)
+        right_frame.pack(side=tk.RIGHT, padx=10)
+
+        pathfinding_button = tk.Button(right_frame, text="自动寻路",
                                        command=lambda: self.add_pathfinding_operation_window(position=position))
         pathfinding_button.pack(pady=5)
-        pass
+
+        close_scan_button = tk.Button(right_frame, text="关闭扫描",
+                                      command=lambda: self.add_close_operation_window(position=position))
+        close_scan_button.pack(pady=5)
+
+        continue_scan_button = tk.Button(right_frame, text="继续扫描",
+                                      command=lambda: self.add_continue_operation_window(position=position))
+        continue_scan_button.pack(pady=5)
+
+        start_scan_button = tk.Button(right_frame, text="开启扫描",
+                                      command=lambda: self.add_start_operation_window(position=position))
+        start_scan_button.pack(pady=5)
 
     def set_file_path(self, file_path):
         self.file_path = file_path
@@ -162,11 +187,20 @@ class OperationList:
     def save_operations(self):
         with open(self.file_path, "wb") as file:
             pickle.dump(self.operations, file)
-            print("save")
 
     def add_default_operations(self):
         default_operations = ["键盘操作：按键位置 - p", "等待：400ms", "键盘操作：按键位置 - enter"]
         self.operations = default_operations
+        self.save_operations()
+
+    def add_start_operation(self, chosen_index, position):
+        self.operation_listbox.insert(position, f"开启：{chosen_index}号扫描")
+        self.operations.append(f"开启：{chosen_index}号扫描")
+        self.save_operations()
+
+    def add_close_operation(self, chosen_index, position):
+        self.operation_listbox.insert(position, f"关闭：{chosen_index}号扫描")
+        self.operations.append(f"关闭：{chosen_index}号扫描")
         self.save_operations()
 
     def add_pathfinding_operation(self, pathfinding_loc, position):
@@ -194,6 +228,14 @@ class OperationList:
         self.operations.append(f"鼠标操作：点击位置 - {click_position}")
         self.save_operations()
 
+    def set_close_operation(self, chosen_index, position):
+        self.chosen_index = chosen_index
+        self.add_close_operation(self.chosen_index, position=position)
+
+    def set_start_operation(self, chosen_index, position):
+        self.chosen_index = chosen_index
+        self.add_start_operation(self.chosen_index, position=position)
+
     def set_pathfinding_loc(self, path_position, position):
         self.path_position = path_position
         self.add_pathfinding_operation(self.path_position, position=position)
@@ -213,6 +255,81 @@ class OperationList:
     def set_click_position(self, click_position, position):
         self.click_position = click_position
         self.add_mouse_operation(self.click_position, position=position)
+
+    def add_close_operation_window(self, position):
+        close_window = tk.Toplevel(self.setting_window)
+        close_window.title("关闭扫描")
+        close_window.geometry("400x300")
+        close_window.lift()
+        close_window.focus_set()
+        self.add_options_window.destroy()
+
+        tab_names = [self.notebook.tab(i, "text") for i in range(self.notebook.index("end"))]
+
+        close_label = tk.Label(close_window, text="请选择需要操作的标签：")
+        close_label.pack(pady=5)
+
+        selected_tab = tk.StringVar(value=tab_names[0])
+        tab_combobox = ttk.Combobox(close_window, textvariable=selected_tab, values=tab_names, state="readonly")
+        tab_combobox.pack()
+
+        def confirm_selection():
+            chosen_index = tab_combobox.current()
+            self.set_close_operation(chosen_index, position=position)
+            close_window.destroy()
+
+        confirm_button = tk.Button(close_window, text="确定", command=confirm_selection)
+        confirm_button.pack(pady=5)
+
+    def add_continue_operation_window(self, position):
+        continue_window = tk.Toplevel(self.setting_window)
+        continue_window.title("继续扫描")
+        continue_window.geometry("400x300")
+        continue_window.lift()
+        continue_window.focus_set()
+        self.add_options_window.destroy()
+
+        tab_names = [self.notebook.tab(i, "text") for i in range(self.notebook.index("end"))]
+
+        start_label = tk.Label(continue_window, text="请选择需要操作的标签：")
+        start_label.pack(pady=5)
+
+        selected_tab = tk.StringVar(value=tab_names[0])
+        tab_combobox = ttk.Combobox(continue_window, textvariable=selected_tab, values=tab_names, state="readonly")
+        tab_combobox.pack()
+
+        def confirm_selection():
+            chosen_tab = selected_tab.get()
+            print(f"已选择的标签是：{chosen_tab}")
+            continue_window.destroy()
+
+        confirm_button = tk.Button(continue_window, text="确定", command=confirm_selection)
+        confirm_button.pack(pady=5)
+
+    def add_start_operation_window(self, position):
+        start_window = tk.Toplevel(self.setting_window)
+        start_window.title("开始扫描")
+        start_window.geometry("400x300")
+        start_window.lift()
+        start_window.focus_set()
+        self.add_options_window.destroy()
+
+        tab_names = [self.notebook.tab(i, "text") for i in range(self.notebook.index("end"))]
+
+        start_label = tk.Label(start_window, text="请选择需要操作的标签：")
+        start_label.pack(pady=5)
+
+        selected_tab = tk.StringVar(value=tab_names[0])
+        tab_combobox = ttk.Combobox(start_window, textvariable=selected_tab, values=tab_names, state="readonly")
+        tab_combobox.pack()
+
+        def confirm_selection():
+            chosen_index = tab_combobox.current()
+            self.set_start_operation(chosen_index, position=position)
+            start_window.destroy()
+
+        confirm_button = tk.Button(start_window, text="确定", command=confirm_selection)
+        confirm_button.pack(pady=5)
 
     def add_pathfinding_operation_window(self, position):
         pathfinding_window = tk.Toplevel(self.setting_window)
@@ -354,6 +471,17 @@ class OperationList:
                 click_position = operation.split(" - ")[1]
                 x, y = map(int, click_position.strip("()").split(","))
                 pyautogui.click(x, y)
+            elif operation.startswith("开启"):
+                chosen_index = int(operation.split("：")[1].strip("号扫描"))
+                self.notebook.select(chosen_index)  # 选择对应的标签页
+                selected_child_frame = self.notebook.nametowidget(self.notebook.select())
+                selected_child_frame.start_scanning()
+            elif operation.startswith("关闭"):
+                chosen_index = int(operation.split("：")[1].strip("号扫描"))
+                self.notebook.select(chosen_index)
+                selected_child_frame = self.notebook.nametowidget(self.notebook.select())
+                selected_child_frame.stop_scanning()
+                selected_child_frame.scanning_status_label.config(text="未开始扫描")
         pass
 
     def populate_operation_list(self):
@@ -367,28 +495,22 @@ class ImageScannerApp(ttk.Frame):
         super().__init__(master)
 
         self.image_path = None
-        self.operation_full_filename = "NewOperation.data"
+
         self.max_loc = None
         self.scan_thread = None
         self.master = master  # 本页面（notebook）的设置
         self.main = main  # 主页面的设置
 
         # 参数的初始化
+        self.operation_full_filename = "NewOperation.data"
         self.file_path = "NewScript.data"
         self.operation_filename = "NewOperation"
-
-        self.operation_settings_window = OperationList(root, parent=self)
-        self.operation_settings_window.set_file_path(self.operation_full_filename)
-        self.operation_settings_window.destroy_self()
+        self.list_name = list_name  # 读取文件名称，list_name是默认读取名
+        self.file_name = f"{list_name}.data"
 
         self.scanning = False  # 是否扫描
 
         self.manual_selection_coordinates = None  # 框选的扫描
-
-        self.manual_select_mode = False  # 是否是框选匹配（已经废除）
-
-        self.list_name = list_name  # 读取文件名称，list_name是默认读取名
-        self.file_name = f"{list_name}.data"
 
         # 左侧的部分界面
         left_frame = ttk.Frame(self)
@@ -448,21 +570,21 @@ class ImageScannerApp(ttk.Frame):
         self.browse_operation_button = tk.Button(right_frame, text="浏览文件", command=self.browse_operation_file)
         self.browse_operation_button.pack(pady=5)
 
-        keyboard.on_press_key("esc", self.stop_key)
-
         try:
             self.scripts = self.load_ordinary() if self.load_ordinary() else []
             self.load_all_script()
+            self.operation_settings_window = OperationList(root, parent=self)
+            self.operation_settings_window.set_file_path(self.operation_full_filename)
+            self.operation_settings_window.destroy_self()
         except FileNotFoundError:
             pass
 
-    def stop_key(self, event):
-        if self.scanning:
-            self.stop_scanning()
+
 
     def init_new(self):
         self.operation_settings_window = OperationList(self.master, parent=self)
         self.operation_settings_window.set_file_path(self.operation_full_filename)
+        self.operation_settings_window.destroy_self()
 
     def browse_operation_file(self):
         filename = filedialog.askopenfilename(initialdir=os.path.dirname(self.operation_full_filename),
@@ -475,6 +597,7 @@ class ImageScannerApp(ttk.Frame):
             self.operation_name_entry.insert(0, os.path.splitext(file_name)[0])
             self.operation_full_filename = filename
             self.operation_filename = os.path.splitext(file_name)[0]
+            self.init_new()
 
     def save_script(self):
         file_path = filedialog.asksaveasfilename(initialdir=os.path.dirname(self.file_path),
@@ -533,11 +656,11 @@ class ImageScannerApp(ttk.Frame):
                 with open(file_path, "rb") as file:
                     data = pickle.load(file)
                 if isinstance(data, list):  # 检查数据是否是列表类型
-                    return data
+                    self.scripts = data
                 elif isinstance(data, dict):  # 检查数据是否是字典类型
                     string_array = [f"{key}: {value}" for key, value in data.items()]
                     self.scripts = string_array
-                    self.load_all_script()
+                self.load_all_script()
             except FileNotFoundError:
                 return None
 
@@ -651,10 +774,13 @@ class ImageScannerApp(ttk.Frame):
 
     def stop_scanning(self):
         self.scanning = False
-        self.scanning_status_label.config(text="未开始扫描")
+        if self.scanning is False:
+            self.scanning_status_label.after(100, lambda: self.scanning_status_label.config(text="未开始扫描"))
         if self.scan_thread is not None:
             self.scan_thread.join()  # 等待线程结束
-        self.scan_thread = None
+            self.scan_thread = None
+            self.scanning_status_label.after(100, lambda: self.scanning_status_label.config(text="未开始扫描"))
+
 
     def browse_target_image(self):
         self.target_image_path_str = filedialog.askopenfilename(initialdir=os.path.dirname(self.image_path),
@@ -710,27 +836,26 @@ class ImageScannerApp(ttk.Frame):
 
     def scan_loop(self):
         if self.scanning:
-            if not self.manual_select_mode:
-                if self.manual_selection_coordinates is not None:
-                    x1, y1, x2, y2 = self.manual_selection_coordinates
-                    screenshot = self.take_screenshot()
+            if self.manual_selection_coordinates is not None:
+                x1, y1, x2, y2 = self.manual_selection_coordinates
+                screenshot = self.take_screenshot()
 
-                    region = (x1, y1, x2, y2)
-                    screen_region = np.array(screenshot.crop(region))
+                region = (x1, y1, x2, y2)
+                screen_region = np.array(screenshot.crop(region))
 
-                    result = self.compare_images_with_template_matching(screen_region, self.target_image)
-                    if result:
-                        self.operation_settings_window.execute_operations()
-                        self.scanning_status_label.config(
-                            text="扫描中")
-                        self.scan_location_label.config(
-                            text=f"({x1}, {y1}) \n ({x1 + self.target_image.shape[1]}, "
-                                 f"{y1 + self.target_image.shape[0]})")
-                    else:
-                        self.scan_location_label.config(
-                            text=f"({x1}, {y1}) \n ({x1 + self.target_image.shape[1]}, "
-                                 f"{y1 + self.target_image.shape[0]})")
-                screenshot.close()
+                result = self.compare_images_with_template_matching(screen_region, self.target_image)
+                if result:
+                    self.operation_settings_window.execute_operations()
+                    self.scanning_status_label.config(
+                        text="扫描中")
+                    self.scan_location_label.config(
+                        text=f"({x1}, {y1}) \n ({x1 + self.target_image.shape[1]}, "
+                                f"{y1 + self.target_image.shape[0]})")
+                else:
+                    self.scan_location_label.config(
+                        text=f"({x1}, {y1}) \n ({x1 + self.target_image.shape[1]}, "
+                                f"{y1 + self.target_image.shape[0]})")
+            screenshot.close()
             self.master.after(100, self.scan_loop)
 
 
@@ -860,7 +985,7 @@ class MainDesk(tk.Tk):
         self.sub_windows.append(sub_window)
 
         tab_name = f"Tab {len(self.sub_windows)}"
-        new_name = askstring("修改扫描名", "请输入新的扫描名", initialvalue=tab_name)
+        new_name = askstring("添加扫描", "请输入扫描名", initialvalue=tab_name)
         if new_name:
             self.notebook.add(sub_window, text=new_name)  # 设置 state 为 "hidden"
         self.notebook.select(sub_window)  # 选中新添加的 tab
@@ -883,6 +1008,8 @@ class MainDesk(tk.Tk):
 
 
     def handle_escape(self, event):
+        for sub_window in self.sub_windows:
+            sub_window.stop_scanning()
         self.focus_force()  # 窗口置顶
         self.state('normal')  # 恢复正常状态
         self.lift()  # 将主窗口放置在其他窗口之上

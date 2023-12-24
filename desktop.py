@@ -55,8 +55,9 @@ class OperationList:
 
         self.operation_listbox = tk.Listbox(self.setting_window, selectmode="single", height=5, width=40)
 
-        self.populate_operation_list()
         self.operation_listbox.pack(pady=5)
+
+        self.populate_operation_list()
 
         self.op_bar = tk.Menu(self.setting_window)
 
@@ -94,7 +95,6 @@ class OperationList:
                 pickle.dump(self.operations, file)
             with open(file_path, 'rb') as file:
                 self.operations = pickle.load(file)
-                self.populate_operation_list()
                 self.set_file_path(file_path)
                 self.setting_window.lift()
                 self.setting_window.focus_set()
@@ -112,7 +112,6 @@ class OperationList:
         if file_path:
             with open(file_path, 'rb') as file:
                 self.operations = pickle.load(file)
-                self.populate_operation_list()
                 self.set_file_path(file_path)
                 self.setting_window.lift()
                 self.setting_window.focus_set()
@@ -584,6 +583,10 @@ class ImageScannerApp(ttk.Frame):
     def init_new(self):
         self.operation_settings_window = OperationList(self.master, parent=self)
         self.operation_settings_window.set_file_path(self.operation_full_filename)
+
+    def init_new_destory(self):
+        self.operation_settings_window = OperationList(self.master, parent=self)
+        self.operation_settings_window.set_file_path(self.operation_full_filename)
         self.operation_settings_window.destroy_self()
 
     def browse_operation_file(self):
@@ -597,7 +600,7 @@ class ImageScannerApp(ttk.Frame):
             self.operation_name_entry.insert(0, os.path.splitext(file_name)[0])
             self.operation_full_filename = filename
             self.operation_filename = os.path.splitext(file_name)[0]
-            self.init_new()
+            self.init_new_destory()
 
     def save_script(self):
         file_path = filedialog.asksaveasfilename(initialdir=os.path.dirname(self.file_path),

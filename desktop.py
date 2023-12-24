@@ -16,6 +16,7 @@ from PIL import Image, ImageGrab, ImageTk
 
 class OperationList:
     def __init__(self, root, parent, list_name="NewOperation"):
+        self.file_path = "NewOperation.data"  #默认的读取文件位置
         self.path_position = None
         self.root = root
         self.parent = parent
@@ -66,49 +67,50 @@ class OperationList:
         self.setting_window.config(menu=self.op_bar)
 
     def save_all_operations(self):
-        file_path = filedialog.asksaveasfilename(initialdir="C:/Users/hp/PycharmProjects/ScriptsRunner/",
+        file_path = filedialog.asksaveasfilename(initialdir=os.path.dirname(self.file_path),
+                                                 initialfile=os.path.basename(self.file_path),
                                                  title="保存操作列表", defaultextension=".data",
                                                  filetypes=(("Data files", "*.data"), ("All files", "*.*")))
+        self.file_path = file_path
         if file_path:
             with open(file_path, 'wb') as file:
                 pickle.dump(self.operations, file)
             with open(file_path, 'rb') as file:
                 self.operations = pickle.load(file)
                 self.populate_operation_list()
-                file_name = os.path.basename(file_path)  # Extract the file name without extension
-                list_name = os.path.splitext(file_name)[0]
-                self.set_list_name(list_name)
+                self.set_file_path(file_path)
                 self.setting_window.lift()
                 self.setting_window.focus_set()
+                self.parent.operation_full_filename = file_path
                 self.parent.operation_filename = os.path.basename(file_path)
-                self.parent.save_default_script(self.parent.file_name)
+                self.parent.save_default_script(self.parent.file_path)
 
     def save_default_operations(self, file_path):
+        self.file_path = file_path
         if file_path:
             with open(file_path, 'wb') as file:
                 pickle.dump(self.operations, file)
             with open(file_path, 'rb') as file:
                 self.operations = pickle.load(file)
                 self.populate_operation_list()
-                file_name = os.path.basename(file_path)  # Extract the file name without extension
-                list_name = os.path.splitext(file_name)[0]
-                self.set_list_name(list_name)
+                self.set_file_path(file_path)
                 self.setting_window.lift()
                 self.setting_window.focus_set()
-                self.parent.operation_filename = os.path.basename(file_path)
-                self.parent.save_default_script(self.parent.file_name)
+                self.parent.operation_full_filename = file_path
+                self.parent.operation_filename = os.path.splitext(os.path.basename(file_path))[0]
+                self.parent.save_default_script(self.parent.file_path)
 
     def load_all_operations(self):
-        file_path = filedialog.askopenfilename(initialdir="C:/Users/hp/PycharmProjects/ScriptsRunner/",
+        file_path = filedialog.askopenfilename(initialdir=os.path.dirname(self.file_path),
+                                               initialfile=os.path.basename(self.file_path),
                                                title="读取操作列表",
                                                filetypes=(("Data files", "*.data"), ("All files", "*.*")))
+        self.file_path = file_path
         if file_path:
             with open(file_path, 'rb') as file:
                 self.operations = pickle.load(file)
                 self.populate_operation_list()
-                file_name = os.path.basename(file_path)  # Extract the file name without extension
-                list_name = os.path.splitext(file_name)[0]
-                self.set_list_name(list_name)
+                self.set_file_path(file_path)
                 self.setting_window.lift()
                 self.setting_window.focus_set()
 
@@ -142,7 +144,9 @@ class OperationList:
         pathfinding_button.pack(pady=5)
         pass
 
-    def set_list_name(self, list_name):
+    def set_file_path(self, file_path):
+        self.file_path = file_path
+        list_name = os.path.splitext(os.path.basename(file_path))[0]
         self.list_name = list_name
         self.file_name = f"{list_name}.data"
         self.operations = self.load_operations()
@@ -150,13 +154,13 @@ class OperationList:
 
     def load_operations(self):
         try:
-            with open(self.file_name, "rb") as file:
+            with open(self.file_path, "rb") as file:
                 return pickle.load(file)
         except FileNotFoundError:
             return None
 
     def save_operations(self):
-        with open(self.file_name, "wb") as file:
+        with open(self.file_path, "wb") as file:
             pickle.dump(self.operations, file)
             print("save")
 
@@ -362,17 +366,19 @@ class ImageScannerApp(ttk.Frame):
     def __init__(self, master, main, list_name="NewScript"):
         super().__init__(master)
 
+        self.image_path = None
+        self.operation_full_filename = "NewOperation.data"
         self.max_loc = None
         self.scan_thread = None
         self.master = master  # 本页面（notebook）的设置
         self.main = main  # 主页面的设置
 
         # 参数的初始化
-        self.file_path = None
+        self.file_path = "NewScript.data"
         self.operation_filename = "NewOperation"
 
         self.operation_settings_window = OperationList(root, parent=self)
-        self.operation_settings_window.set_list_name(self.operation_filename)
+        self.operation_settings_window.set_file_path(self.operation_full_filename)
         self.operation_settings_window.destroy_self()
 
         self.scanning = False  # 是否扫描
@@ -456,28 +462,32 @@ class ImageScannerApp(ttk.Frame):
 
     def init_new(self):
         self.operation_settings_window = OperationList(self.master, parent=self)
-        self.operation_settings_window.set_list_name(self.operation_filename)
+        self.operation_settings_window.set_file_path(self.operation_full_filename)
 
     def browse_operation_file(self):
-        filename = filedialog.askopenfilename(initialdir="C:/Users/hp/PycharmProjects/ScriptsRunner/",
+        filename = filedialog.askopenfilename(initialdir=os.path.dirname(self.operation_full_filename),
+                                              initialfile=os.path.basename(self.operation_full_filename),
                                               title="操作列表", defaultextension=".data",
                                               filetypes=(("Data files", "*.data"), ("All files", "*.*")))
         if filename:
             file_name = os.path.basename(filename)
             self.operation_name_entry.delete(0, tk.END)
             self.operation_name_entry.insert(0, os.path.splitext(file_name)[0])
+            self.operation_full_filename = filename
             self.operation_filename = os.path.splitext(file_name)[0]
 
     def save_script(self):
-        file_path = filedialog.asksaveasfilename(initialdir="C:/Users/hp/PycharmProjects/ScriptsRunner/",
+        file_path = filedialog.asksaveasfilename(initialdir=os.path.dirname(self.file_path),
+                                                 initialfile=os.path.basename(self.file_path),
                                                  title="保存脚本", defaultextension=".data",
                                                  filetypes=(("Data files", "*.data"), ("All files", "*.*")))
+        self.file_path = file_path
         self.file_name = os.path.basename(file_path)
         if file_path:
             data = {
                 "target_image_path": self.target_image_path.get(),
                 "manual_selection_coordinates": self.manual_selection_coordinates,
-                "operation_filename": self.operation_filename
+                "operation_full_filename": self.operation_full_filename
             }
             existing_data = {}
             if os.path.exists(file_path):
@@ -501,11 +511,12 @@ class ImageScannerApp(ttk.Frame):
 
     def save_default_script(self, file_path):
         self.file_name = os.path.basename(file_path)
+        self.file_path = file_path
         if file_path:
             data = {
                 "target_image_path": self.target_image_path.get(),
                 "manual_selection_coordinates": self.manual_selection_coordinates,
-                "operation_filename": self.operation_filename
+                "operation_full_filename": self.operation_full_filename
             }
             existing_data = {}
             if os.path.exists(file_path):
@@ -531,15 +542,17 @@ class ImageScannerApp(ttk.Frame):
                 return None
 
     def save_ordinary(self):
-        with open(self.file_name, "wb") as file:
+        with open(self.file_path, "wb") as file:
             pickle.dump(self.scripts, file)
             print("scripts")
 
     def load_script(self):
-        file_path = filedialog.askopenfilename(initialdir="C:/Users/hp/PycharmProjects/ScriptsRunner/",
+        file_path = filedialog.askopenfilename(initialdir=os.path.dirname(self.file_path),
+                                               initialfile=os.path.basename(self.file_path),
                                                title="读取脚本",
                                                filetypes=(("Data files", "*.data"), ("All files", "*.*")))
         self.file_name = os.path.basename(file_path)
+        self.file_path = file_path
         try:
             with open(file_path, "rb") as file:
                 data = pickle.load(file)
@@ -554,7 +567,7 @@ class ImageScannerApp(ttk.Frame):
 
     def load_ordinary(self):
         try:
-            with open(self.file_name, "rb") as file:
+            with open(self.file_path, "rb") as file:
                 data = pickle.load(file)
             if isinstance(data, list):  # 检查数据是否是列表类型
                 return data
@@ -574,18 +587,20 @@ class ImageScannerApp(ttk.Frame):
             if script.startswith("target_image_path:"):
                 target_image = script.split(": ")[1]
                 self.target_image_path.insert(0, target_image)
+                self.image_path = target_image
             elif script.startswith("manual_selection_coordinates:"):
                 manual_selection = script.split(": ")[1]
                 manual_selection = eval(manual_selection)
                 self.manual_selection_coordinates = manual_selection
-            elif script.startswith("operation_filename:"):
+            elif script.startswith("operation_full_filename:"):
                 filename = script.split(": ")[1]
-                self.operation_filename = filename
-                self.operation_name_entry.insert(0, filename)
+                self.operation_full_filename = filename
+                self.operation_filename = os.path.splitext(os.path.basename(filename))[0]
+                self.operation_name_entry.insert(0, self.operation_filename)
 
     def open_operation_settings_window(self):
         self.operation_settings_window = OperationList(self.master, parent=self)
-        self.operation_settings_window.set_list_name(self.operation_filename)
+        self.operation_settings_window.set_file_path(self.operation_full_filename)
 
     @staticmethod
     def take_screenshot():
@@ -642,7 +657,8 @@ class ImageScannerApp(ttk.Frame):
         self.scan_thread = None
 
     def browse_target_image(self):
-        self.target_image_path_str = filedialog.askopenfilename(initialdir="C://Users//hp//OneDrive//桌面//limbus",
+        self.target_image_path_str = filedialog.askopenfilename(initialdir=os.path.dirname(self.image_path),
+                                                                initialfile=os.path.basename(self.image_path),
                                                                 title="Select file",
                                                                 filetypes=(
                                                                     ("jpeg files", "*.jpg"), ("all files", "*.*")))
@@ -871,17 +887,6 @@ class MainDesk(tk.Tk):
         self.state('normal')  # 恢复正常状态
         self.lift()  # 将主窗口放置在其他窗口之上
 
-    def save_default_columns(self, file_path):
-        if file_path:
-            data = {}
-            for sub_window in self.sub_windows:
-                tab_name = self.notebook.tab(sub_window, "text")
-                file_name = sub_window.file_name
-                data[tab_name] = file_name
-
-            with open(file_path, "w") as file:
-                json.dump(data, file)
-
     def save_scan_columns(self):
         file_path = filedialog.asksaveasfilename(initialdir="C:/Users/hp/PycharmProjects/ScriptsRunner/",
                                                  title="保存扫描列",
@@ -892,7 +897,8 @@ class MainDesk(tk.Tk):
                 if sub_window.winfo_exists():
                    tab_name = self.notebook.tab(sub_window, "text")
                    file_name = sub_window.file_name
-                   data[tab_name] = file_name
+                   read_path = sub_window.file_path
+                   data[tab_name] = {"file_name": file_name, "file_path": read_path}
 
             with open(file_path, "w") as file:
                 json.dump(data, file)
@@ -905,9 +911,10 @@ class MainDesk(tk.Tk):
             try:
                 with open(file_path, "r") as file:
                     data = json.load(file)
-                    for tab_name, file_name in data.items():
-                        sub_window = ImageScannerApp(self.notebook, self, list_name=file_name)
-                        sub_window.file_name = file_name  # 设置每个子窗口的file_name
+                    for tab_name, file_data in data.items():
+                        sub_window = ImageScannerApp(self.notebook, self, list_name=file_data["file_name"])
+                        sub_window.file_name = file_data["file_name"]  # 设置每个子窗口的file_name
+                        sub_window.file_path = file_data["file_path"]  # 设置每个子窗口的file_path
                         sub_window.load_ordinary()
                         sub_window.load_all_script()
                         self.notebook.add(sub_window, text=tab_name)

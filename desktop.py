@@ -10,13 +10,16 @@ import cv2
 import keyboard
 import numpy as np
 import pyautogui
-from PIL import Image, ImageGrab, ImageTk
+from PIL import Image, ImageGrab
 
 
 class OperationList:
     def __init__(self, root, parent, list_name="NewOperation"):
+
         self.file_path = "NewOperation.data"  #默认的读取文件位置
 
+        self.pstart = None
+        self.pend = None
         self.chosen_index = None
         self.path_position = None
         self.root = root
@@ -156,17 +159,19 @@ class OperationList:
                                        command=lambda: self.add_pathfinding_operation_window(position=position))
         pathfinding_button.pack(pady=5)
 
-        close_scan_button = tk.Button(right_frame, text="关闭扫描",
-                                      command=lambda: self.add_close_operation_window(position=position))
-        close_scan_button.pack(pady=5)
-
-        continue_scan_button = tk.Button(right_frame, text="继续扫描",
-                                      command=lambda: self.add_continue_operation_window(position=position))
+        continue_scan_button = tk.Button(right_frame, text="拖动操作",
+                                      command=lambda: self.add_drag_operation_window(position=position))
         continue_scan_button.pack(pady=5)
 
         start_scan_button = tk.Button(right_frame, text="开启扫描",
                                       command=lambda: self.add_start_operation_window(position=position))
         start_scan_button.pack(pady=5)
+
+        close_scan_button = tk.Button(right_frame, text="关闭扫描",
+                                      command=lambda: self.add_close_operation_window(position=position))
+        close_scan_button.pack(pady=5)
+
+
 
     def set_file_path(self, file_path):
         self.file_path = file_path
@@ -202,6 +207,11 @@ class OperationList:
         self.operations.append(f"关闭：{chosen_index}号扫描")
         self.save_operations()
 
+    def add_drag_operation(self, pstart, pend, position):
+        self.operation_listbox.insert(position, f"拖动：({pstart},{pend})")
+        self.operations.append(f"拖动：({pstart},{pend})")
+        self.save_operations()
+
     def add_pathfinding_operation(self, pathfinding_loc, position):
         self.operation_listbox.insert(position, f"寻路：{pathfinding_loc}")
         self.operations.append(f"寻路：{pathfinding_loc}")
@@ -234,6 +244,11 @@ class OperationList:
     def set_start_operation(self, chosen_index, position):
         self.chosen_index = chosen_index
         self.add_start_operation(self.chosen_index, position=position)
+
+    def set_darg_operation(self, pstart, pend, position):
+        self.pstart = pstart
+        self.pend = pend
+        self.add_drag_operation(self.pstart, self.pend, position=position)
 
     def set_pathfinding_loc(self, path_position, position):
         self.path_position = path_position
@@ -280,30 +295,43 @@ class OperationList:
         confirm_button = tk.Button(close_window, text="确定", command=confirm_selection)
         confirm_button.pack(pady=5)
 
-    def add_continue_operation_window(self, position):
-        continue_window = tk.Toplevel(self.setting_window)
-        continue_window.title("继续扫描")
-        continue_window.geometry("400x300")
-        continue_window.lift()
-        continue_window.focus_set()
+    def add_drag_operation_window(self, position):
+        self.setting_window.iconify()
+        self.parent.main.iconify()
+        pstart = None
+        pend = None
+        drag_window = tk.Toplevel(self.setting_window)
+        drag_window.attributes('-alpha', 0.2)  # Set transparency
+        drag_window.attributes('-fullscreen', True)  # Set fullscreen
+        drag_window.title("继续扫描")
+        drag_window.wm_attributes('-topmost', 1)
         self.add_options_window.destroy()
+        canvas = tk.Canvas(drag_window)
+        canvas.pack(fill="both", expand=True)
 
-        tab_names = [self.notebook.tab(i, "text") for i in range(self.notebook.index("end"))]
+        def record_start_position(event):
+            nonlocal pstart  # Use nonlocal to modify the pstart variable in the outer scope
+            pstart = (event.x, event.y)
 
-        start_label = tk.Label(continue_window, text="请选择需要操作的标签：")
-        start_label.pack(pady=5)
+        def draw_drag_line(event):
+            canvas.delete("all")
+            if pstart is not None:
+                canvas.create_line(pstart[0], pstart[1], event.x, event.y, fill='red', width=5)
 
-        selected_tab = tk.StringVar(value=tab_names[0])
-        tab_combobox = ttk.Combobox(continue_window, textvariable=selected_tab, values=tab_names, state="readonly")
-        tab_combobox.pack()
+        def record_end_position(event):
+            nonlocal pend
+            pend = (event.x, event.y)
+            self.set_darg_operation(pstart, pend, position=position)
+            self.parent.main.deiconify()
+            self.setting_window.deiconify()
+            time.sleep(0.2)
+            drag_window.destroy()
 
-        def confirm_selection():
-            chosen_tab = selected_tab.get()
-            print(f"已选择的标签是：{chosen_tab}")
-            continue_window.destroy()
+        drag_window.bind("<Button-1>", record_start_position)  # Record start position
+        drag_window.bind("<B1-Motion>", draw_drag_line)  # Draw drag line
+        drag_window.bind("<ButtonRelease-1>", record_end_position)  # Record end position
 
-        confirm_button = tk.Button(continue_window, text="确定", command=confirm_selection)
-        confirm_button.pack(pady=5)
+        drag_window.focus_set()
 
     def add_start_operation_window(self, position):
         start_window = tk.Toplevel(self.setting_window)
@@ -417,17 +445,23 @@ class OperationList:
         keyboard_window.bind("<Key>", record_key_press)
 
     def add_mouse_operation_window(self, position):
+        self.setting_window.iconify()
+        self.parent.main.iconify()
         self.add_options_window.destroy()
         mouse_window = tk.Toplevel(self.setting_window)
-        mouse_window.attributes('-alpha', 0.5)  # Set transparency
+        mouse_window.attributes('-alpha', 0.3)  # Set transparency
         mouse_window.attributes('-fullscreen', True)  # Set fullscreen
         mouse_window.title("鼠标操作")
         mouse_label = tk.Label(mouse_window, text="请在此窗口点击一个位置：")
         mouse_label.pack(pady=5)
+        mouse_window.wm_attributes('-topmost', 1)
 
         def record_click_position(event):
             click_position = f"({event.x}, {event.y})"
             self.set_click_position(click_position, position=position)
+            self.parent.main.deiconify()
+            self.setting_window.deiconify()
+            time.sleep(0.2)
             mouse_window.destroy()
 
         mouse_window.bind("<Button-1>", record_click_position)
@@ -481,7 +515,12 @@ class OperationList:
                 selected_child_frame = self.notebook.nametowidget(self.notebook.select())
                 selected_child_frame.stop_scanning()
                 selected_child_frame.scanning_status_label.config(text="未开始扫描")
-        pass
+            elif operation.startswith("拖动"):
+                positions = eval(operation.split("：")[1])  # 获取拖动的坐标信息并转换为元组
+                start_pos, end_pos = positions  # 解析起始位置和结束位置的坐标
+                pyautogui.moveTo(start_pos[0], start_pos[1])  # 将鼠标移动到起始位置
+                pyautogui.dragTo(end_pos[0], end_pos[1], duration=0.4)
+    pass
 
     def populate_operation_list(self):
         self.operation_listbox.delete(0, tk.END)  # Clear the listbox
@@ -798,44 +837,47 @@ class ImageScannerApp(ttk.Frame):
         self.main.iconify()  # 将主窗口最小化
 
         self.manual_selection_window = tk.Toplevel(self.master)  # 创建一个新的Toplevel窗口
-        self.manual_selection_window.overrideredirect(True)  # 去除窗口边框
-        self.manual_selection_window.attributes("-alpha", 0.1)  # 设置窗口透明度
-        self.manual_selection_window.attributes("-topmost", True)  # 窗口置顶
-        self.manual_selection_window.geometry(
-            f"{self.master.winfo_screenwidth()}x{self.master.winfo_screenheight()}+0+0")  # 设置窗口大小和位置
-        self.manual_selection_image = Image.new("RGBA",
-                                                (self.master.winfo_screenwidth(), self.master.winfo_screenheight()),
-                                                (0, 0, 0, 0))  # 创建透明图像
-        self.manual_selection_photo = ImageTk.PhotoImage(self.manual_selection_image)
-        self.manual_selection_canvas = tk.Canvas(self.manual_selection_window, width=self.master.winfo_screenwidth(),
-                                                 height=self.master.winfo_screenheight(), highlightthickness=0)
-        self.manual_selection_canvas.create_image(0, 0, anchor="nw", image=self.manual_selection_photo)
-        self.manual_selection_canvas.pack()
-        self.manual_selection_window.bind('<ButtonRelease-1>',
-                                          self.on_release_select)  # Bind left mouse button release event
-        self.manual_selection_window.bind('<ButtonPress-1>', self.on_press_select)  # 绑定鼠标左键按下事件
-        self.manual_selection_window.bind('<ButtonRelease-1>', self.on_release_select)  # 绑定鼠标左键释放事
+        self.manual_selection_window.attributes('-alpha', 0.5)
+        self.manual_selection_window.attributes('-fullscreen', True)
+        self.manual_selection_window.title("截图窗口")
+        canvas = tk.Canvas(self.manual_selection_window)
+        canvas.pack(fill="both", expand=True)
 
-    def on_press_select(self, event):
-        self.start_x = event.x  # 记录鼠标按下时的横坐标
-        self.start_y = event.y  # 记录鼠标按下时的纵坐标
+        def on_press_select(event):
+            self.start_x = event.x  # 记录鼠标按下时的横坐标
+            self.start_y = event.y  # 记录鼠标按下时的纵坐标
 
-    def on_release_select(self, event):
-        self.end_x = event.x  # 记录鼠标释放时的横坐标
-        self.end_y = event.y  # 记录鼠标释放时的纵坐标
-        self.main.attributes("-alpha", 1.0)  # 恢复窗口透明度
-        self.main.state('normal')  # 恢复窗口大小
-        self.manual_select_mode = False  # 退出手动框选模式
-        self.scan_location_label.config(
-            text=f"({self.start_x}, {self.start_y}) \n({self.end_x}, {self.end_y})")
-        self.master.unbind('<Motion>')  # 解绑鼠标移动事件
-        self.master.unbind('<ButtonPress-1>')  # 解绑鼠标左键按下事件
-        self.master.unbind('<ButtonRelease-1>')  # 解绑鼠标左键释放事件
-        self.start_button.config(state="normal")  # 恢复“开始扫描”按钮的状态
-        self.manual_selection_coordinates = (
-            self.start_x, self.start_y, self.end_x, self.end_y)  # Store the coordinates
-        self.main.deiconify()
-        self.manual_selection_window.destroy()
+        def on_release_select(event):
+            self.end_x = event.x  # 记录鼠标释放时的横坐标
+            self.end_y = event.y  # 记录鼠标释放时的纵坐标
+            self.manual_select_mode = False  # 退出手动框选模式
+            self.scan_location_label.config(
+                text=f"({self.start_x}, {self.start_y}) \n({self.end_x}, {self.end_y})")
+            self.start_button.config(state="normal")  # 恢复“开始扫描”按钮的状态
+            self.manual_selection_coordinates = (
+                self.start_x, self.start_y, self.end_x, self.end_y)  # Store the coordinates
+            self.main.deiconify()
+            self.manual_selection_window.destroy()
+
+        def draw_drag_line(event):
+            canvas.delete("all")
+            if self.start_x is not None:
+                canvas.create_line(self.start_x, self.start_y, self.start_x, event.y, fill='black',
+                                   width=5)  # Draw line from (start_x,start_y) to (start_x,end_y)
+                canvas.create_line(self.start_x, self.start_y, event.x, self.start_y, fill='black',
+                                   width=5)  # Draw line from (start_x,start_y) to (end_x,start_y)
+                canvas.create_line(self.start_x, event.y, event.x, event.y, fill='black',
+                                   width=5)  # Draw line from (start_x,end_y) to (end_x,end_y)
+                canvas.create_line(event.x, self.start_y, event.x,  event.y, fill='black',
+                                   width=5)  # Draw line from (end_x,start_y) to (end_x,end_y)
+
+        canvas.bind("<Button-1>", on_press_select)  # Record start position
+        canvas.bind("<B1-Motion>", draw_drag_line)  # Draw drag line
+        canvas.bind("<ButtonRelease-1>", on_release_select)  # Record end position
+
+        self.manual_selection_window.focus_set()
+
+
 
     def scan_loop(self):
         if self.scanning:
@@ -1019,7 +1061,7 @@ class MainDesk(tk.Tk):
 
     def save_scan_columns(self):
         file_path = filedialog.asksaveasfilename(initialdir="C:/Users/hp/PycharmProjects/ScriptsRunner/",
-                                                 title="保存扫描列",
+                                                 title="保存扫描列",defaultextension=".json",
                                                  filetypes=(("Json", "*.json"), ("All files", "*.*")))
         if file_path:
             data = {}

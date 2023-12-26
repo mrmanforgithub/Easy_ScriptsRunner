@@ -550,6 +550,8 @@ class ImageScannerApp(ttk.Frame):
         self.list_name = list_name  # 读取文件名称，list_name是默认读取名
         self.file_name = f"{list_name}.data"
 
+        self.max_loops = None
+
         self.custom_font = tkFont.Font(family="SimHei", size=12, weight="bold")
         style = ttk.Style()
         style.configure("Dashed.TFrame", borderwidth=10, bordercolor="black", relief="solid", padding=5)
@@ -618,11 +620,18 @@ class ImageScannerApp(ttk.Frame):
         bottom_frame = ttk.Frame(self, style="Dashed.TFrame")
         bottom_frame.grid(row=2, columnspan=3, pady=(20,10))
 
+        loop_options = ["无限循环", "循环1次", "循环10次"]
+        self.loop_var = tk.StringVar()
+        self.loop_var.set(loop_options[0])  # 默认为无限循环
+
         self.start_button = tk.Button(bottom_frame, text="开始扫描", command=self.start_scanning, width=15, height=2, font=self.custom_font)
-        self.start_button.pack(side="left", padx=50, pady=10)
+        self.start_button.pack(side="left", padx=25, pady=10)
+
+        loop_option_menu = tk.OptionMenu(bottom_frame, self.loop_var, *loop_options, command=self.update_max_loops)
+        loop_option_menu.pack(side="left", padx=20, pady=10)
 
         self.stop_button = tk.Button(bottom_frame, text="停止扫描", command=self.stop_scanning, width=15, height=2, font=self.custom_font)
-        self.stop_button.pack(side="left", padx=50, pady=10)
+        self.stop_button.pack(side="left", padx=20, pady=10)
 
         try:
             self.scripts = self.load_ordinary() if self.load_ordinary() else []
@@ -633,6 +642,13 @@ class ImageScannerApp(ttk.Frame):
         except FileNotFoundError:
             pass
 
+    def update_max_loops(self, value):
+        if value == "无限循环":
+            self.max_loops = None
+        elif value == "循环1次":
+            self.max_loops = 1
+        elif value == "循环10次":
+            self.max_loops = 10
 
 
     def init_new(self):
@@ -818,19 +834,24 @@ class ImageScannerApp(ttk.Frame):
         else:
             return False  # 图片不相似
 
-    def start_scanning(self):
+    def start_scanning(self,max_loops = None):
         self.scanning = True
+        loop_option_value = self.loop_var.get()  # Get the current value from loop_var
+        self.update_max_loops(loop_option_value)
+        if self.max_loops is not None:
+            max_loops = self.max_loops
         x1, y1, x2, y2 = self.manual_selection_coordinates
         self.target_image_path_str = self.target_image_path.get()
         self.target_image = self.load_target_image(self.target_image_path_str)
         self.scanning_status_label.config(text="扫描中")
         self.scan_location_label.config(text=f"({x1}, {y1})\n({x2}, {y2})")
         self.main.iconify()  # 将窗口最小化
-        self.scan_thread = threading.Thread(target=self.scan_loop())
+        self.scan_thread = threading.Thread(target=self.scan_loop(max_loops = max_loops))
         self.scan_thread.start()
 
     def stop_scanning(self):
         self.scanning = False
+        self.max_loops = None
         if self.scanning is False:
             self.scanning_status_label.after(100, lambda: self.scanning_status_label.config(text="未开始扫描"))
         if self.scan_thread is not None:
@@ -914,8 +935,8 @@ class ImageScannerApp(ttk.Frame):
 
 
 
-    def scan_loop(self):
-        if self.scanning:
+    def scan_loop(self, max_loops):
+        if self.scanning and (max_loops is None or max_loops > 0):
             if self.manual_selection_coordinates is not None:
                 x1, y1, x2, y2 = self.manual_selection_coordinates
                 screenshot = self.take_screenshot()
@@ -936,13 +957,21 @@ class ImageScannerApp(ttk.Frame):
                         text=f"({x1}, {y1}) \n ({x1 + self.target_image.shape[1]}, "
                                 f"{y1 + self.target_image.shape[0]})")
             screenshot.close()
-            self.master.after(100, self.scan_loop)
+
+            if max_loops is not None:
+                max_loops -= 1
+
+            if max_loops is None or max_loops > 0:
+                self.master.after(100, lambda: self.scan_loop(max_loops))
+            else:
+                self.stop_scanning()
 
 
 class MainDesk(tk.Tk):
     def __init__(self):
         super().__init__()
         # 数据初始化
+        self.keep_scanning = None
         self.entry_operation = None
         self.entry_script = None
         self.entry_location = None
@@ -971,15 +1000,54 @@ class MainDesk(tk.Tk):
         for sub_window in self.sub_windows:
             sub_window.start_scanning()
 
+    def handle_escape(self, event):
+        self.keep_scanning = False
+        for sub_window in self.sub_windows:
+            sub_window.stop_scanning()
+        self.focus_force()  # 窗口置顶
+        self.state('normal')  # 恢复正常状态
+        self.lift()  # 将主窗口放置在其他窗口之上
+
+    def execute_loop_scanning(self):
+        self.keep_scanning = True
+        while self.keep_scanning:
+           for sub_window in self.sub_windows:
+               sub_window.max_loops = 1
+               sub_window.start_scanning()
+
+
+
+    def execute_scanning(self):
+        for sub_window in self.sub_windows:
+            sub_window.start_scanning()
+
+    def execute_escape(self):
+        self.keep_scanning = False
+        for sub_window in self.sub_windows:
+            sub_window.stop_scanning()
+        self.focus_force()  # 窗口置顶
+        self.state('normal')  # 恢复正常状态
+        self.lift()  # 将主窗口放置在其他窗口之上
+
+
     def create_menu_bar(self):
         menu_bar = tk.Menu(self)
-
         file_menu = tk.Menu(menu_bar, tearoff=0)
+
+        scan_columns_menu = tk.Menu(file_menu, tearoff=0)
+        scan_columns_menu.add_command(label="修改扫描名", command=self.rename_tab)
+        scan_columns_menu.add_command(label="保存扫描列", command=self.save_scan_columns)
+        scan_columns_menu.add_command(label="导入扫描列", command=self.load_scan_columns)
+
+        scan_menu = tk.Menu(file_menu, tearoff=0)
+        scan_menu.add_command(label="全部开启扫描", command=self.execute_scanning)
+        scan_menu.add_command(label="循环开启扫描", command=self.execute_loop_scanning)
+        scan_menu.add_command(label="关闭全部扫描", command=self.execute_escape)
+
         file_menu.add_command(label="新扫描", command=self.add_image_scanner_app)
         file_menu.add_command(label="删除扫描", command=self.delete_image_scanner_app)
-        file_menu.add_command(label="修改扫描名", command=self.rename_tab)
-        file_menu.add_command(label="保存扫描列", command=self.save_scan_columns)
-        file_menu.add_command(label="导入扫描列", command=self.load_scan_columns)
+        file_menu.add_cascade(label="扫描列操作", menu=scan_columns_menu)
+        file_menu.add_cascade(label="开启扫描", menu=scan_menu)
         file_menu.add_command(label="一键保存", command=self.save_all)
 
         menu_bar.add_cascade(label="操作", menu=file_menu)
@@ -1085,14 +1153,6 @@ class MainDesk(tk.Tk):
             sub_window = self.sub_windows[index]
             self.notebook.forget(current_tab)
             sub_window.destroy()
-
-
-    def handle_escape(self, event):
-        for sub_window in self.sub_windows:
-            sub_window.stop_scanning()
-        self.focus_force()  # 窗口置顶
-        self.state('normal')  # 恢复正常状态
-        self.lift()  # 将主窗口放置在其他窗口之上
 
     def save_scan_columns(self):
         file_path = filedialog.asksaveasfilename(initialdir="C:/Users/hp/PycharmProjects/ScriptsRunner/",

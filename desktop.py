@@ -4,6 +4,7 @@ import pickle
 import threading
 import time
 import tkinter as tk
+import tkinter.font as tkFont
 from tkinter import filedialog, ttk
 from tkinter.simpledialog import askstring
 import cv2
@@ -533,7 +534,10 @@ class ImageScannerApp(ttk.Frame):
         super().__init__(master)
 
         self.image_path = None
-
+        self.start_y = None   #拖动框选的开始位置
+        self.start_x = None
+        self.end_y = None  # 拖动框选的开始位置
+        self.end_x = None
         self.max_loc = None
         self.scan_thread = None
         self.master = master  # 本页面（notebook）的设置
@@ -546,35 +550,35 @@ class ImageScannerApp(ttk.Frame):
         self.list_name = list_name  # 读取文件名称，list_name是默认读取名
         self.file_name = f"{list_name}.data"
 
+        self.custom_font = tkFont.Font(family="SimHei", size=12, weight="bold")
+        style = ttk.Style()
+        style.configure("Dashed.TFrame", borderwidth=10, bordercolor="black", relief="solid", padding=5)
+
         self.scanning = False  # 是否扫描
 
         self.manual_selection_coordinates = None  # 框选的扫描
 
+        self.grab_photo = False
+
         # 左侧的部分界面
-        left_frame = ttk.Frame(self)
-        left_frame.grid(row=0, column=0, padx=10)
+        left_frame = ttk.Frame(self, style="Dashed.TFrame")
+        left_frame.grid(row=0, column=0, rowspan=2, padx=10, pady=50)
 
         self.scanning_status_label = tk.Label(left_frame, text="未开始扫描", fg="red")
-        self.scanning_status_label.pack()
+        self.scanning_status_label.pack(pady=10, padx=10)
 
         self.scan_location_label = tk.Label(left_frame, text="扫描位置：未知")  # 新增的Label用于显示扫描位置
-        self.scan_location_label.pack()
+        self.scan_location_label.pack(pady=50, padx=10)
 
         # 中间的部分界面
-        middle_frame = ttk.Frame(self)
-        middle_frame.grid(row=0, column=1, padx=10)
-
-        self.start_button = tk.Button(middle_frame, text="开始扫描", command=self.start_scanning)
-        self.start_button.pack(pady=10)
-
-        self.stop_button = tk.Button(middle_frame, text="停止扫描", command=self.stop_scanning)
-        self.stop_button.pack(pady=10)
+        middle_frame = ttk.Frame(self, style="Dashed.TFrame")
+        middle_frame.grid(row=0, column=1, rowspan=2, padx=10, pady=50)
 
         self.target_image_path_label = tk.Label(middle_frame, text="目标图片路径:")
-        self.target_image_path_label.pack()
+        self.target_image_path_label.pack(padx=10, pady=10)
 
         self.target_image_path = tk.Entry(middle_frame)
-        self.target_image_path.pack()
+        self.target_image_path.pack(padx=10, pady=10)
 
         self.browse_button = tk.Button(middle_frame, text="浏览图片", command=self.browse_target_image)
         self.browse_button.pack(pady=5)
@@ -582,31 +586,43 @@ class ImageScannerApp(ttk.Frame):
         self.manual_select_button = tk.Button(middle_frame, text="手动框选", command=self.open_manual_selection_window)
         self.manual_select_button.pack(pady=5)
 
-        self.operation_settings_button = tk.Button(middle_frame, text="设置操作",
-                                                   command=self.open_operation_settings_window)
-        self.operation_settings_button.pack(pady=10)
+        self.capture_button = tk.Button(middle_frame, text="一键截图", command=self.start_grab_window)
+        self.capture_button.pack(pady=5)
 
         # 右边的部分界面
-        right_frame = ttk.Frame(self)
-        right_frame.grid(row=0, column=2, padx=10)
+        right_frame = ttk.Frame(self, style="Dashed.TFrame")
+        right_frame.grid(row=0, column=2, padx=10, pady=10)
 
         self.current_script_label = tk.Label(right_frame, text=f"当前脚本：{self.file_name}")
-        self.current_script_label.pack()
+        self.current_script_label.pack(padx=10, pady=10)
 
         self.save_button = tk.Button(right_frame, text="保存脚本", command=self.save_script)
-        self.save_button.pack(pady=10)
+        self.save_button.pack(side="left", pady=10, padx=15)
 
         self.load_button = tk.Button(right_frame, text="读取脚本", command=self.load_script)
-        self.load_button.pack(pady=10)
+        self.load_button.pack(side="left", pady=10, padx=15)
 
-        self.operation_name_label = tk.Label(right_frame, text="操作列表名:")
-        self.operation_name_label.pack()
+        right_frame2 = ttk.Frame(self, style="Dashed.TFrame")
+        right_frame2.grid(row=1, column=2, padx=10)
 
-        self.operation_name_entry = tk.Entry(right_frame)
-        self.operation_name_entry.pack()
+        self.current_operation_label = tk.Label(right_frame2, text=f"当前操作：{self.operation_filename}")
+        self.current_operation_label.pack(padx=10, pady=10)
 
-        self.browse_operation_button = tk.Button(right_frame, text="浏览文件", command=self.browse_operation_file)
-        self.browse_operation_button.pack(pady=5)
+        self.operation_settings_button = tk.Button(right_frame2, text="设置操作",
+                                                   command=self.open_operation_settings_window)
+        self.operation_settings_button.pack(side="left", pady=10, padx=15)
+
+        self.browse_operation_button = tk.Button(right_frame2, text="读取操作", command=self.browse_operation_file)
+        self.browse_operation_button.pack(side="left", pady=10, padx=15)
+
+        bottom_frame = ttk.Frame(self, style="Dashed.TFrame")
+        bottom_frame.grid(row=2, columnspan=3, pady=(20,10))
+
+        self.start_button = tk.Button(bottom_frame, text="开始扫描", command=self.start_scanning, width=15, height=2, font=self.custom_font)
+        self.start_button.pack(side="left", padx=50, pady=10)
+
+        self.stop_button = tk.Button(bottom_frame, text="停止扫描", command=self.stop_scanning, width=15, height=2, font=self.custom_font)
+        self.stop_button.pack(side="left", padx=50, pady=10)
 
         try:
             self.scripts = self.load_ordinary() if self.load_ordinary() else []
@@ -635,10 +651,10 @@ class ImageScannerApp(ttk.Frame):
                                               filetypes=(("Data files", "*.data"), ("All files", "*.*")))
         if filename:
             file_name = os.path.basename(filename)
-            self.operation_name_entry.delete(0, tk.END)
-            self.operation_name_entry.insert(0, os.path.splitext(file_name)[0])
+
             self.operation_full_filename = filename
             self.operation_filename = os.path.splitext(file_name)[0]
+            self.current_operation_label.config(text=f"当前操作：{self.operation_filename}")
             self.init_new_destory()
 
     def save_script(self):
@@ -744,7 +760,6 @@ class ImageScannerApp(ttk.Frame):
             return None
 
     def load_all_script(self):
-        self.operation_name_entry.delete(0, 'end')
         self.target_image_path.delete(0, 'end')
         self.current_script_label.config(
             text=f"当前脚本：{self.file_name}")
@@ -761,7 +776,7 @@ class ImageScannerApp(ttk.Frame):
                 filename = script.split(": ")[1]
                 self.operation_full_filename = filename
                 self.operation_filename = os.path.splitext(os.path.basename(filename))[0]
-                self.operation_name_entry.insert(0, self.operation_filename)
+                self.current_operation_label.config(text=f"当前操作：{self.operation_filename}")
 
     def open_operation_settings_window(self):
         self.operation_settings_window = OperationList(self.master, parent=self)
@@ -833,11 +848,15 @@ class ImageScannerApp(ttk.Frame):
         self.target_image_path.delete(0, tk.END)
         self.target_image_path.insert(0, self.target_image_path_str)
 
+    def start_grab_window(self):
+        self.grab_photo = True
+        self.open_manual_selection_window()
+
     def open_manual_selection_window(self):
         self.main.iconify()  # 将主窗口最小化
 
         self.manual_selection_window = tk.Toplevel(self.master)  # 创建一个新的Toplevel窗口
-        self.manual_selection_window.attributes('-alpha', 0.5)
+        self.manual_selection_window.attributes('-alpha', 0.3)
         self.manual_selection_window.attributes('-fullscreen', True)
         self.manual_selection_window.title("截图窗口")
         canvas = tk.Canvas(self.manual_selection_window)
@@ -856,8 +875,24 @@ class ImageScannerApp(ttk.Frame):
             self.start_button.config(state="normal")  # 恢复“开始扫描”按钮的状态
             self.manual_selection_coordinates = (
                 self.start_x, self.start_y, self.end_x, self.end_y)  # Store the coordinates
-            self.main.deiconify()
             self.manual_selection_window.destroy()
+            if self.grab_photo:  # 如果需要截图
+                x1, y1 = min(self.start_x, self.end_x), min(self.start_y, self.end_y)
+                x2, y2 = max(self.start_x, self.end_x), max(self.start_y, self.end_y)
+                self.manual_selection_coordinates = (
+                    self.start_x-5, self.start_y-5, self.end_x+5, self.end_y+5)
+                # 在对应位置产生截图
+                screenshot = ImageGrab.grab(bbox=(x1, y1, x2, y2))
+                self.grab_photo = False
+                # 要求用户选择路径保存截图
+                file_path = filedialog.asksaveasfilename(defaultextension=".jpg", filetypes=[("JPEG files", "*.jpg")])
+                if file_path:  # 如果用户选择了路径
+                    screenshot.save(file_path)  # 保存截图
+                    self.target_image_path.delete(0, tk.END)
+                    self.target_image_path.insert(0, file_path)
+
+            self.main.deiconify() # 恢复最小化的之前的界面
+
 
         def draw_drag_line(event):
             canvas.delete("all")
@@ -914,7 +949,7 @@ class MainDesk(tk.Tk):
         self.folder_path = None
 
         # 界面初始化
-        self.geometry("600x500")
+        self.geometry("610x500")
         self.title("Script_Runner")
         self.lift()
         self.focus_set()

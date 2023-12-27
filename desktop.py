@@ -1,3 +1,4 @@
+import concurrent.futures
 import json
 import os
 import pickle
@@ -7,6 +8,7 @@ import tkinter as tk
 import tkinter.font as tkFont
 from tkinter import filedialog, ttk
 from tkinter.simpledialog import askstring
+
 import cv2
 import keyboard
 import numpy as np
@@ -533,13 +535,15 @@ class ImageScannerApp(ttk.Frame):
     def __init__(self, master, main, list_name="NewScript"):
         super().__init__(master)
 
+        self.target_image = None
+        self.target_image_path_str = None
         self.image_path = None
         self.start_y = None   #拖动框选的开始位置
         self.start_x = None
         self.end_y = None  # 拖动框选的开始位置
         self.end_x = None
         self.max_loc = None
-        self.scan_thread = None
+
         self.master = master  # 本页面（notebook）的设置
         self.main = main  # 主页面的设置
 
@@ -561,6 +565,9 @@ class ImageScannerApp(ttk.Frame):
         self.manual_selection_coordinates = None  # 框选的扫描
 
         self.grab_photo = False
+
+        self.scan_pool = concurrent.futures.ThreadPoolExecutor(max_workers=20)
+        self.scan_futures = set()
 
         # 左侧的部分界面
         left_frame = ttk.Frame(self, style="Dashed.TFrame")
@@ -835,6 +842,12 @@ class ImageScannerApp(ttk.Frame):
             return False  # 图片不相似
 
     def start_scanning(self,max_loops = None):
+        for future in list(self.scan_futures):
+            if future.done():
+                self.scan_futures.remove(future)  # 移除已完成的任务
+        if len(self.scan_futures) >= 20:
+            print("Too many scan tasks running.")
+            return
         self.scanning = True
         loop_option_value = self.loop_var.get()  # Get the current value from loop_var
         self.update_max_loops(loop_option_value)
@@ -845,19 +858,18 @@ class ImageScannerApp(ttk.Frame):
         self.target_image = self.load_target_image(self.target_image_path_str)
         self.scanning_status_label.config(text="扫描中")
         self.scan_location_label.config(text=f"({x1}, {y1})\n({x2}, {y2})")
-        self.main.iconify()  # 将窗口最小化
-        self.scan_thread = threading.Thread(target=self.scan_loop(max_loops = max_loops))
-        self.scan_thread.start()
+
+        future = self.scan_pool.submit(self.scan_loop, max_loops)
+        self.scan_futures.add(future)
 
     def stop_scanning(self):
         self.scanning = False
         self.max_loops = None
-        if self.scanning is False:
-            self.scanning_status_label.after(100, lambda: self.scanning_status_label.config(text="未开始扫描"))
-        if self.scan_thread is not None:
-            self.scan_thread.join()  # 等待线程结束
-            self.scan_thread = None
-            self.scanning_status_label.after(100, lambda: self.scanning_status_label.config(text="未开始扫描"))
+        for future in list(self.scan_futures):
+            if not future.done():
+                future.cancel()
+                self.scan_futures.remove(future)
+        self.scanning_status_label.after(100, lambda: self.scanning_status_label.config(text="未开始扫描"))
 
 
     def browse_target_image(self):
@@ -1010,12 +1022,17 @@ class MainDesk(tk.Tk):
 
     def execute_loop_scanning(self):
         self.keep_scanning = True
+        scanning_thread = threading.Thread(target=self.start_scanning_in_sub_windows)
+        scanning_thread.start()
+
+    def start_scanning_in_sub_windows(self):
         while self.keep_scanning:
-           for sub_window in self.sub_windows:
-               sub_window.max_loops = 1
-               sub_window.start_scanning()
-
-
+          for sub_window in self.sub_windows:
+              if not self.keep_scanning:  # 检查标志位，判断是否需要继续扫描
+                  break
+              sub_window.loop_var.set("循环1次")
+              sub_window.start_scanning()
+              time.sleep(0.1)
 
     def execute_scanning(self):
         for sub_window in self.sub_windows:

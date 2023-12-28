@@ -6,6 +6,7 @@ import threading
 import time
 import tkinter as tk
 import tkinter.font as tkFont
+import random
 from tkinter import filedialog, ttk
 from tkinter.simpledialog import askstring
 
@@ -200,9 +201,9 @@ class OperationList:
         self.operations = default_operations
         self.save_operations()
 
-    def add_start_operation(self, chosen_index, position):
-        self.operation_listbox.insert(position, f"开启：{chosen_index}号扫描")
-        self.operations.append(f"开启：{chosen_index}号扫描")
+    def add_start_operation(self, chosen_index, position, loop_count):
+        self.operation_listbox.insert(position, f"开启：{chosen_index}号扫描{loop_count}次")
+        self.operations.append(f"开启：{chosen_index}号扫描{loop_count}次")
         self.save_operations()
 
     def add_close_operation(self, chosen_index, position):
@@ -244,9 +245,9 @@ class OperationList:
         self.chosen_index = chosen_index
         self.add_close_operation(self.chosen_index, position=position)
 
-    def set_start_operation(self, chosen_index, position):
+    def set_start_operation(self, chosen_index, position, loop_count):
         self.chosen_index = chosen_index
-        self.add_start_operation(self.chosen_index, position=position)
+        self.add_start_operation(self.chosen_index, position=position,loop_count = loop_count)
 
     def set_darg_operation(self, pstart, pend, position):
         self.pstart = pstart
@@ -353,9 +354,20 @@ class OperationList:
         tab_combobox = ttk.Combobox(start_window, textvariable=selected_tab, values=tab_names, state="readonly")
         tab_combobox.pack()
 
+        loop_options = ["无限循环", "循环1次", "循环10次"]
+        selected_loop = tk.StringVar(value=loop_options[0])
+        loop_combobox = ttk.Combobox(start_window, textvariable=selected_loop, values=loop_options, state="readonly")
+        loop_combobox.pack()
+
         def confirm_selection():
             chosen_index = tab_combobox.current()
-            self.set_start_operation(chosen_index, position=position)
+            loop_selection = selected_loop.get()  # Get the selected loop option
+            loop_count = None
+            if loop_selection == "循环1次":
+                loop_count = 1
+            elif loop_selection == "循环10次":
+                loop_count = 10
+            self.set_start_operation(chosen_index, position=position, loop_count=loop_count)
             start_window.destroy()
 
         confirm_button = tk.Button(start_window, text="确定", command=confirm_selection)
@@ -496,7 +508,9 @@ class OperationList:
                 max_loc = self.parent.max_loc
                 center_x = int((max_loc[0][0] + max_loc[1][0]) / 2)
                 center_y = int((max_loc[0][1] + max_loc[1][1]) / 2)
-                pyautogui.click(center_x + int(path[0]), center_y + int(path[1]))
+                offset_x = random.randint(-1, 1)
+                offset_y = random.randint(-1, 1)
+                pyautogui.click(center_x + int(path[0]) + offset_x, center_y + int(path[1]) + offset_y)
             elif operation.startswith("滚轮"):
                 scroll_time = int(operation.split("：")[1].strip("步"))
                 pyautogui.scroll(scroll_time)  # 执行滚轮
@@ -506,11 +520,21 @@ class OperationList:
             elif operation.startswith("鼠标操作"):
                 click_position = operation.split(" - ")[1]
                 x, y = map(int, click_position.strip("()").split(","))
-                pyautogui.click(x, y)
+                offset_x = random.randint(-1, 1)
+                offset_y = random.randint(-1, 1)
+                pyautogui.click(x + offset_x, y + offset_y)
             elif operation.startswith("开启"):
-                chosen_index = int(operation.split("：")[1].strip("号扫描"))
+                chosen_index = int(operation.split("号扫描")[0].strip("开启："))
+                loop_count_string = operation.split("号扫描")[1].split("次")[0].strip()
+                loop_count = int(loop_count_string) if loop_count_string and loop_count_string != 'None' else None
                 self.notebook.select(chosen_index)  # 选择对应的标签页
                 selected_child_frame = self.notebook.nametowidget(self.notebook.select())
+                if loop_count == 1:
+                    selected_child_frame.loop_var.set("循环1次")
+                elif loop_count == 10:
+                    selected_child_frame.loop_var.set("循环10次")
+                elif loop_count is None:
+                    selected_child_frame.loop_var.set("无限循环")
                 selected_child_frame.start_scanning()
             elif operation.startswith("关闭"):
                 chosen_index = int(operation.split("：")[1].strip("号扫描"))
